@@ -348,7 +348,7 @@ async function runTurn(state: State, ui: Ui, command: Command): Promise<void> {
     case 'guard': {
       playGuard();
       state.pose = 'guard';
-      await wait(config.juice.guardMs * 0.45);
+      await wait(config.juice.guardMs);
       break;
     }
     case 'combo': {

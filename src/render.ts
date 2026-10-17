@@ -9,6 +9,7 @@ import {
   heroAttack,
   heroCharge,
   heroDown,
+  heroGuard,
   heroHurt,
   heroIdle,
   heroWin,
@@ -433,16 +434,6 @@ function drawHero(ctx: CanvasRenderingContext2D, scene: Scene): void {
   if (scene.heroFlash > 0) {
     blit(ctx, sprite, x, y, drawn, { tint: '#ffffff', alpha: scene.heroFlash });
   }
-  if (scene.heroPose === 'guard') {
-    const sx = x - 16;
-    const sy = y - 24;
-    ctx.fillStyle = '#1a2838';
-    ctx.fillRect(sx - 1, sy - 1, 12, 16);
-    ctx.fillStyle = '#8eacd0';
-    ctx.fillRect(sx, sy, 10, 14);
-    ctx.fillStyle = '#f4f7ff';
-    ctx.fillRect(sx + 2, sy + 3, 3, 5);
-  }
 }
 
 function partySprite(pose: Pose, glow: number, flash: number, celebrating: boolean, time: number, offset: number): Sprite {
@@ -450,7 +441,7 @@ function partySprite(pose: Pose, glow: number, flash: number, celebrating: boole
   if (celebrating) return heroWin;
   if (flash > 0.35) return heroHurt;
   if (pose === 'lunge') return heroAttack;
-  if (pose === 'guard') return hero;
+  if (pose === 'guard') return heroGuard;
   if (glow > 0.2) return heroCharge;
   const breath = Math.floor(time * 1.5 + offset) % 2 === 1;
   return breath ? heroIdle : hero;
