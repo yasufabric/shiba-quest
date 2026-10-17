@@ -192,55 +192,80 @@ function ensureBackdrop(width: number, height: number): HTMLCanvasElement {
   return canvas;
 }
 
+/** Where the shrine road meets the sky. The gate sits on this line. */
+export const FIELD_HORIZON = 0.46;
+/** The road aims at the gate, left of center, where the foe stands. */
+export const ROAD_CENTER = 0.36;
+
+/**
+ * Half-width of the stone road. Null above the horizon.
+ * The road is one band that widens toward the party, not striped rows.
+ */
+export function roadHalf(y: number, height: number): number | null {
+  const horizon = Math.round(height * FIELD_HORIZON);
+  if (y < horizon || height <= horizon) return null;
+  const depth = (y - horizon) / (height - horizon);
+  return 7 + depth * 52;
+}
+
 function paintBackdrop(ctx: CanvasRenderingContext2D, width: number, height: number): void {
-  const horizon = Math.round(height * 0.5);
-  const sky = ['#182868', '#2a4494', '#4a6cb4', '#8aafd0', '#d4e6f0'];
+  const horizon = Math.round(height * FIELD_HORIZON);
+  const gate = Math.round(width * ROAD_CENTER);
+  paintSky(ctx, width, horizon);
+  paintMoon(ctx, Math.round(width * 0.78), Math.round(height * 0.12));
+  paintCloud(ctx, 24, 16, 26, 8);
+  paintCloud(ctx, 58, 30, 16, 5);
+  paintRange(ctx, width, horizon, 52, 0.3, '#b7c8d4', '#8ea6ba');
+  paintRange(ctx, width, horizon, 30, 1.6, '#5c7490', '#3c5874');
+  paintTorii(ctx, gate, horizon);
+  paintPine(ctx, 16, horizon - 2, 20);
+  paintPine(ctx, 40, horizon + 6, 30);
+  paintPine(ctx, width - 18, horizon, 24);
+  paintPine(ctx, width - 44, horizon + 12, 38);
+  paintGround(ctx, width, height, horizon, gate);
+}
+
+function paintSky(ctx: CanvasRenderingContext2D, width: number, horizon: number): void {
+  const sky = ['#121e40', '#1c3068', '#3a5898', '#7a9cc4', '#d4e4ee'];
   for (let y = 0; y < horizon; y += 1) {
     const scaled = (y / horizon) * (sky.length - 1);
     const index = Math.min(sky.length - 2, Math.floor(scaled));
     const local = scaled - index;
-    const edge = local > 0.35 && local < 0.65;
+    const edge = local > 0.4 && local < 0.7;
     for (let x = 0; x < width; x += 1) {
       const pick = edge && local > dither(x, y) ? index + 1 : index;
       ctx.fillStyle = sky[pick] ?? sky[0];
       ctx.fillRect(x, y, 1, 1);
     }
   }
-  const sunX = Math.round(width * 0.78);
-  const sunY = Math.round(height * 0.14);
-  for (let y = -10; y <= 10; y += 1) {
-    for (let x = -10; x <= 10; x += 1) {
-      if (x * x + y * y > 100) continue;
-      ctx.fillStyle = '#fff6d4';
-      ctx.fillRect(sunX + x, sunY + y, 1, 1);
+}
+
+function paintMoon(ctx: CanvasRenderingContext2D, cx: number, cy: number): void {
+  for (let y = -14; y <= 14; y += 1) {
+    for (let x = -14; x <= 14; x += 1) {
+      const d = x * x + y * y;
+      if (d > 196) continue;
+      const halo = d > 100 && dither(cx + x, cy + y) > 0.45;
+      ctx.fillStyle = halo ? '#f4e6b0' : '#fff8dc';
+      ctx.fillRect(cx + x, cy + y, 1, 1);
     }
-  }
-  fillRidge(ctx, width, horizon, 34, 0.2, '#6e8eae', '#4a6884');
-  fillRidge(ctx, width, horizon, 14, 1.4, '#355068', '#243848');
-  for (let x = 6; x < width; x += 14) {
-    tree(ctx, x, horizon + 2, horizon - 16 - (x % 5));
-  }
-  let y = horizon;
-  let stripe = 2;
-  let band = 0;
-  while (y < height) {
-    const depth = (y - horizon) / Math.max(1, height - horizon);
-    stripe = 2 + Math.floor(depth * 7);
-    const far = band % 2 === 0;
-    for (let row = y; row < Math.min(height, y + stripe); row += 1) {
-      const rowDepth = (row - horizon) / Math.max(1, height - horizon);
-      for (let x = 0; x < width; x += 1) {
-        const path = Math.abs(x - width * 0.38) < 10 + rowDepth * 36;
-        ctx.fillStyle = path ? (far ? '#d4b56a' : '#b48c44') : far ? '#6e5a38' : '#3e3224';
-        ctx.fillRect(x, row, 1, 1);
-      }
-    }
-    y += stripe;
-    band += 1;
   }
 }
 
-function fillRidge(
+function paintCloud(ctx: CanvasRenderingContext2D, x: number, y: number, rx: number, ry: number): void {
+  for (let dy = -ry; dy <= ry; dy += 1) {
+    for (let dx = -rx; dx <= rx; dx += 1) {
+      const nx = dx / rx;
+      const ny = dy / ry;
+      if (nx * nx + ny * ny > 1) continue;
+      if (dither(x + dx, y + dy) > 0.55) continue;
+      ctx.fillStyle = '#e4eef6';
+      ctx.fillRect(x + dx, y + dy, 1, 1);
+    }
+  }
+}
+
+function paintRange(
   ctx: CanvasRenderingContext2D,
   width: number,
   horizon: number,
@@ -250,23 +275,71 @@ function fillRidge(
   dark: string,
 ): void {
   for (let x = 0; x < width; x += 1) {
-    const ridge =
+    const n = x / width;
+    const crest =
       horizon -
       lift -
-      Math.round(Math.sin(x * 0.07 + phase) * 12 + Math.sin(x * 0.16 + phase * 2) * 6);
-    for (let y = ridge; y < horizon; y += 1) {
-      ctx.fillStyle = dither(x, y) > 0.62 ? light : dark;
+      Math.round(Math.sin(n * Math.PI * 3 + phase) * 10 + Math.sin(n * Math.PI * 7 + phase * 2) * 6);
+    for (let y = crest; y < horizon; y += 1) {
+      ctx.fillStyle = dither(x, y) > 0.7 ? light : dark;
       ctx.fillRect(x, y, 1, 1);
     }
   }
 }
 
-function tree(ctx: CanvasRenderingContext2D, x: number, ground: number, top: number): void {
-  for (let y = top; y < ground; y += 1) {
-    const half = Math.max(1, Math.round(((y - top) / Math.max(1, ground - top)) * 5));
-    for (let dx = -half; dx <= half; dx += 1) {
-      ctx.fillStyle = dither(x + dx, y) > 0.5 ? '#2a5434' : '#1a3824';
-      ctx.fillRect(x + dx, y, 1, 1);
+/** A gate at the end of the road, so the field is a shrine approach. */
+function paintTorii(ctx: CanvasRenderingContext2D, x: number, ground: number): void {
+  const top = ground - 26;
+  ctx.fillStyle = '#6e2828';
+  ctx.fillRect(x - 11, top + 6, 3, ground - top - 4);
+  ctx.fillRect(x + 8, top + 6, 3, ground - top - 4);
+  ctx.fillStyle = '#8a3434';
+  ctx.fillRect(x - 14, top, 28, 3);
+  ctx.fillStyle = '#a84848';
+  ctx.fillRect(x - 12, top + 5, 24, 2);
+}
+
+function paintPine(ctx: CanvasRenderingContext2D, x: number, ground: number, height: number): void {
+  ctx.fillStyle = '#3a2814';
+  ctx.fillRect(x, ground - 5, 2, 5);
+  for (let tier = 0; tier < 3; tier += 1) {
+    const crown = ground - height + tier * Math.round(height / 3.2);
+    const span = 3 + (2 - tier);
+    for (let y = crown; y < crown + Math.round(height / 2.2); y += 1) {
+      const half = Math.max(1, span - Math.floor((y - crown) / 3));
+      for (let dx = -half; dx <= half; dx += 1) {
+        ctx.fillStyle = dither(x + dx, y) > 0.45 ? '#1e4a30' : '#143824';
+        ctx.fillRect(x + dx, y, 1, 1);
+      }
+    }
+  }
+}
+
+function paintGround(
+  ctx: CanvasRenderingContext2D,
+  width: number,
+  height: number,
+  horizon: number,
+  center: number,
+): void {
+  for (let y = horizon; y < height; y += 1) {
+    const half = roadHalf(y, height) ?? 0;
+    const depth = (y - horizon) / Math.max(1, height - horizon);
+    const stride = 6;
+    for (let x = 0; x < width; x += 1) {
+      const along = Math.abs(x - center);
+      if (along < half) {
+        const edge = half - along < 1.2;
+        const course = Math.floor((y - horizon) / (4 + Math.floor(depth * 3)));
+        const joint = (x + course * 4) % stride === 0;
+        const lit = dither(x, y) < 0.35 + depth * 0.4;
+        ctx.fillStyle = edge ? '#5c4828' : joint ? '#7a5c30' : lit ? '#d2b070' : '#a08048';
+      } else {
+        const tuft = ((x * 5 + y * 3) & 7) === 0;
+        const near = depth > 0.7;
+        ctx.fillStyle = tuft ? (near ? '#3d6e3a' : '#2c5434') : near ? '#243820' : '#3a4e30';
+      }
+      ctx.fillRect(x, y, 1, 1);
     }
   }
 }
