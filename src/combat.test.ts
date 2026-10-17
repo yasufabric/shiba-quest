@@ -1,8 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { config, maxFightTurns, minFightTurns } from './config';
-import { defaultSave, grantBone, nextEncounter, recruitAlly } from './campaign';
+import { config, type CampaignId, maxFightTurns, minFightTurns } from './config';
+import { defaultSave, keepRecruiting, nextEncounter, noteDamage, recruitAlly, resolveWin } from './campaign';
 import { intentAt, pacePolicy, quadChargeReady, simulate, step } from './combat';
+import { commandMenu } from './menu';
 import { makeBattle } from './setup';
+import { allySprites, crow, toad, type Sprite } from './sprites';
 
 const rules = { chargeCap: config.charge.cap };
 
@@ -93,21 +95,163 @@ describe('fight length', () => {
   });
 });
 
-describe('room for the full game', () => {
-  it('keeps the four-ally combo unbuilt', () => {
-    expect(quadChargeReady(4, config.campaign.combo)).toBe(false);
-    expect(config.campaign.fullMinionsBeforeBoss).toBe(3);
-    expect(config.ally.maxCount).toBe(4);
-  });
-
-  it('gives a bone on a win and recruits a single ally', () => {
-    let save = grantBone(defaultSave());
-    expect(save.bones).toBe(1);
-    const recruited = recruitAlly(save);
-    expect(recruited).toEqual({ ...save, bones: 0, allies: 1 });
-    save = grantBone(recruited ?? save);
-    expect(recruitAlly(save)).toBeNull();
-    expect(nextEncounter('minion')).toBe('boss');
-    expect(nextEncounter('boss')).toBe('minion');
+describe('fight length', () => {
+  it('drops every encounter inside the one-to-two minute window', () => {
+    const ids = ['minion', 'minion2', 'minion3', 'boss'] as const;
+    const measured = ids.map((id) => {
+      const sim = simulate(makeBattle(id, 0), (battle) => pacePolicy(battle, rules.chargeCap), rules, 80);
+      expect(sim.battle.outcome).toBe('win');
+      expect(sim.turns).toBeGreaterThanOrEqual(minFightTurns);
+      expect(sim.turns).toBeLessThanOrEqual(maxFightTurns);
+      expect(sim.turns * config.time.turnSeconds).toBeGreaterThanOrEqual(config.time.minFightSeconds);
+      expect(sim.turns * config.time.turnSeconds).toBeLessThanOrEqual(config.time.maxFightSeconds);
+      return sim.turns;
+    });
+    expect(measured).toEqual([13, 18, 20, 17]);
+    const fullSeconds = config.tutorial.seconds + measured.reduce((sum, turns) => sum + turns, 0) * config.time.turnSeconds;
+    expect(fullSeconds).toBe(352);
   });
 });
+
+describe('variety', () => {
+  it('gives each foe its own pattern and a same-turn ! that guard cancels', () => {
+    const ids = ['minion', 'minion2', 'minion3', 'boss'] as const;
+    const patterns = ids.map((id) => config.encounters[id].pattern.join(','));
+    expect(new Set(patterns).size).toBe(ids.length);
+    for (const id of ids) {
+      let battle = makeBattle(id, 0);
+      const pattern = config.encounters[id].pattern;
+      expect(pattern.includes('strike')).toBe(true);
+      for (const intent of pattern) {
+        expect(intentAt(battle)).toBe(intent);
+        if (intent === 'strike') {
+          const guarded = step(battle, 'guard', rules);
+          expect(guarded.enemyDamage).toBe(0);
+          expect(guarded.guarded).toBe(true);
+        }
+        battle = step(battle, 'charge', rules).battle;
+      }
+    }
+  });
+});
+
+describe('campaign', () => {
+  it('walks three minions then the boss, and recruits one ally at a time after the boss', () => {
+    expect(config.campaign.order).toEqual(['minion', 'minion2', 'minion3', 'boss']);
+    expect(config.campaign.fullMinionsBeforeBoss).toBe(3);
+    expect(nextEncounter('minion')).toBe('minion2');
+    expect(nextEncounter('minion2')).toBe('minion3');
+    expect(nextEncounter('minion3')).toBe('boss');
+    expect(nextEncounter('boss')).toBe('minion');
+
+    let save = defaultSave();
+    const minions: CampaignId[] = ['minion', 'minion2', 'minion3'];
+    for (const id of minions) {
+      save = resolveWin(save, id);
+      expect(save.recruitPending).toBe(false);
+    }
+    expect(save.bones).toBe(3);
+    expect(save.encounter).toBe('boss');
+    save = resolveWin(save, 'boss');
+    expect(save).toMatchObject({ bones: 4, allies: 0, encounter: 'minion', recruitPending: true });
+
+    for (let count = 1; count <= 4; count += 1) {
+      expect(keepRecruiting(save)).toBe(true);
+      const next = recruitAlly(save);
+      expect(next?.allies).toBe(count);
+      expect(next?.bones).toBe(4 - count);
+      save = next ?? save;
+    }
+    expect(keepRecruiting(save)).toBe(false);
+    expect(recruitAlly(save)).toBeNull();
+    const capped = resolveWin(save, 'boss');
+    expect(capped.recruitPending).toBe(false);
+    expect(capped.allies).toBe(4);
+  });
+});
+
+describe('record', () => {
+  it('ignores the scripted tutorial 9999 and keeps real hits', () => {
+    const fresh = defaultSave();
+    expect(noteDamage(fresh, config.tutorial.damage, true)).toBe(fresh);
+    const real = noteDamage(fresh, 224);
+    expect(real.bestDamage).toBe(224);
+    expect(noteDamage(real, 9999, true).bestDamage).toBe(224);
+    expect(noteDamage(real, 56).bestDamage).toBe(224);
+    expect(noteDamage(real, 448).bestDamage).toBe(448);
+  });
+});
+
+describe('tutorial commands', () => {
+  it('shows all three labels and highlights only the guided one', () => {
+    const charge = commandMenu({ tutorialStep: 0, comboReady: true, open: true });
+    expect(charge.attack.hidden).toBe(false);
+    expect(charge.charge.hidden).toBe(false);
+    expect(charge.guard.hidden).toBe(false);
+    expect(charge.charge.hot).toBe(true);
+    expect(charge.charge.disabled).toBe(false);
+    expect(charge.attack.disabled).toBe(true);
+    expect(charge.guard.disabled).toBe(true);
+    expect(charge.attack.hot).toBe(false);
+    expect(charge.guard.hot).toBe(false);
+    expect(charge.combo.hidden).toBe(true);
+
+    const stillCharging = commandMenu({ tutorialStep: 1, comboReady: false, open: true });
+    expect(stillCharging.charge.hot).toBe(true);
+    expect(stillCharging.attack.disabled).toBe(true);
+    expect(stillCharging.guard.disabled).toBe(true);
+
+    const attack = commandMenu({ tutorialStep: 2, comboReady: false, open: true });
+    expect(attack.attack.hot).toBe(true);
+    expect(attack.attack.disabled).toBe(false);
+    expect(attack.attack.hidden).toBe(false);
+    expect(attack.charge.disabled).toBe(true);
+    expect(attack.charge.hidden).toBe(false);
+    expect(attack.guard.disabled).toBe(true);
+    expect(attack.guard.hidden).toBe(false);
+    expect(attack.combo.hidden).toBe(true);
+  });
+});
+
+describe('combo', () => {
+  it('charges all four allies and strikes at once for the cap', () => {
+    expect(quadChargeReady(4, config.campaign.combo)).toBe(true);
+    expect(quadChargeReady(3, config.campaign.combo)).toBe(false);
+    const open = commandMenu({ tutorialStep: null, comboReady: true, open: true });
+    expect(open.combo.hidden).toBe(false);
+    expect(open.combo.disabled).toBe(false);
+    expect(open.attack.hidden).toBe(false);
+
+    let battle = makeBattle('minion3', 4);
+    battle = step(battle, 'charge', rules).battle;
+    const before = battle.enemy.hp;
+    const result = step(battle, 'combo', rules);
+    const each = config.ally.attack * config.charge.cap;
+    expect(result.heroDamage).toBe(0);
+    expect(result.battle.hero.multiplier).toBe(2);
+    expect(result.allyDamage).toEqual([each, each, each, each]);
+    expect(before - result.battle.enemy.hp).toBe(each * 4);
+    expect(result.battle.allies.every((ally) => ally.multiplier === 1)).toBe(true);
+    expect(result.battle.outcome).toBe('ongoing');
+  });
+});
+
+describe('sprites', () => {
+  it('ships a distinct original sprite for every foe and ally', () => {
+    expect(spriteSignature(crow)).not.toBe(spriteSignature(toad));
+    expect(allySprites).toHaveLength(config.ally.maxCount);
+    const signatures = allySprites.map(spriteSignature);
+    expect(new Set(signatures).size).toBe(signatures.length);
+    for (const sprite of [crow, toad, ...allySprites]) expectSprite(sprite);
+  });
+});
+
+function spriteSignature(sprite: Sprite): string {
+  return sprite.rows.join('\n');
+}
+
+function expectSprite(sprite: Sprite): void {
+  expect(sprite.rows).toHaveLength(sprite.h);
+  expect(sprite.w).toBeGreaterThan(8);
+  for (const row of sprite.rows) expect(row).toHaveLength(sprite.w);
+}

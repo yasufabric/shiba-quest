@@ -113,6 +113,7 @@ export function step(battle: Battle, command: Command, rules: Rules, options?: S
       break;
     }
     case 'guard':
+    case 'combo':
       break;
     default: {
       const neverCommand: never = command;
@@ -120,14 +121,12 @@ export function step(battle: Battle, command: Command, rules: Rules, options?: S
     }
   }
 
-  const allyDamage = battle.allies.map(() => 0);
-  if (enemy.hp > 0) {
-    battle.allies.forEach((ally, index) => {
-      const dealt = ally.attack * ally.multiplier;
-      allyDamage[index] = dealt;
-      enemy.hp -= dealt;
-    });
-  }
+  const allyDamage = battle.allies.map((ally) => {
+    if (command !== 'combo' && enemy.hp <= 0) return 0;
+    const power = command === 'combo' ? rules.chargeCap : ally.multiplier;
+    return ally.attack * power;
+  });
+  for (const dealt of allyDamage) enemy.hp -= dealt;
 
   const guarded = command === 'guard' && intent === 'strike';
   let enemyDamage = 0;
@@ -147,7 +146,10 @@ export function step(battle: Battle, command: Command, rules: Rules, options?: S
   return {
     battle: {
       hero,
-      allies: battle.allies.map((ally) => ({ ...ally })),
+      allies: battle.allies.map((ally) => ({
+        ...ally,
+        multiplier: command === 'combo' ? 1 : ally.multiplier,
+      })),
       enemy,
       pattern: battle.pattern,
       turn: battle.turn + 1,
@@ -173,7 +175,7 @@ export function simulate(battle: Battle, policy: (battle: Battle) => Command, ru
   return { battle: current, turns };
 }
 
-/** The four-ally combo is reserved and stays off in this prototype. */
+/** Four allies unlock the shared charge-and-strike. */
 export function quadChargeReady(allyCount: number, combo: { enabled: boolean; alliesRequired: number }): boolean {
   return combo.enabled && allyCount >= combo.alliesRequired;
 }

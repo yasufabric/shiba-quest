@@ -1,6 +1,10 @@
 import { config, type CampaignId } from './config';
 import { defaultSave, type SaveData } from './campaign';
 
+function isCampaignId(value: unknown): value is CampaignId {
+  return typeof value === 'string' && (config.campaign.order as readonly string[]).includes(value);
+}
+
 const KEY = 'shiba-quest';
 
 export function loadSave(): SaveData {
@@ -21,9 +25,7 @@ export function loadSave(): SaveData {
     if (typeof record.allies === 'number' && record.allies > 0) {
       save.allies = Math.min(config.ally.maxCount, Math.floor(record.allies));
     }
-    if (record.encounter === 'minion' || record.encounter === 'boss') {
-      save.encounter = record.encounter satisfies CampaignId;
-    }
+    if (isCampaignId(record.encounter)) save.encounter = record.encounter;
     if (record.recruitPending === true) save.recruitPending = true;
     return save;
   } catch {

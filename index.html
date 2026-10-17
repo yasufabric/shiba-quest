@@ -26,13 +26,7 @@
             </div>
             <span class="atb"><i id="hp-fill"></i></span>
           </div>
-          <div class="who" id="ally-hp" hidden>
-            <div class="line">
-              <span class="nm">しろ</span>
-              <span class="hp" id="ally-text">48/48</span>
-            </div>
-            <span class="atb"><i id="ally-fill"></i></span>
-          </div>
+          <div id="roster" hidden></div>
           <div class="meta">
             <canvas id="bone-icon" width="32" height="16"></canvas>
             <span id="bones">0</span>
@@ -44,9 +38,11 @@
         <button type="button" data-command="attack"><i class="mark"></i>こうげき</button>
         <button type="button" data-command="charge"><i class="mark"></i>ためる</button>
         <button type="button" data-command="guard"><i class="mark"></i>まもる</button>
+        <button type="button" data-command="combo" hidden><i class="mark"></i>れんけい</button>
       </div>
       <canvas id="finger" width="48" height="64" hidden></canvas>
       <div id="modal" hidden>
+        <p id="result-record" hidden></p>
         <button type="button" id="retry" class="window">もういちど</button>
         <button type="button" id="recruit" aria-label="ほね">
           <canvas id="recruit-bone" width="220" height="120"></canvas>

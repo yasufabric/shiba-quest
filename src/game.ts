@@ -1,19 +1,14 @@
-import { config, type CampaignId, type Command, type EncounterId } from './config';
-import { grantBone, nextEncounter, noteDamage, recruitAlly, type SaveData } from './campaign';
-import { intentAt, step, type Battle } from './combat';
+import { config, type Command, type EncounterId } from './config';
+import { keepRecruiting, noteDamage, recruitAlly, resolveWin, type SaveData } from './campaign';
+import { intentAt, quadChargeReady, step, type Battle } from './combat';
 import { makeBattle } from './setup';
 import { loadSave, writeSave } from './save';
 import { playAttack, playCharge, playGuard, playHit, playShatter, playVictory, unlockAudio } from './audio';
 import { battleAnchors, drawScene, VIEW_H, VIEW_W, type FloatNumber, type Fragment, type Pose, type Scene } from './render';
-import { blit, bone as boneSprite, boss, dumpling, finger, hero, imp, shatterBlocks, type Sprite } from './sprites';
+import { commandMenu } from './menu';
+import { allySprites, blit, bone as boneSprite, enemySprites, finger, shatterBlocks, type Sprite } from './sprites';
 
 const rules = { chargeCap: config.charge.cap };
-
-const ALLY_RECOLOR: Record<string, string> = {
-  o: '#d8d0c2',
-  d: '#b7aa9a',
-  l: '#f3ecdf',
-};
 
 interface Shard extends Fragment {
   vx: number;
@@ -57,6 +52,7 @@ interface State {
   shards: Shard[];
   reward: number;
   allyHits: number;
+  summon: number;
   intro: number;
   width: number;
   height: number;
@@ -75,9 +71,10 @@ interface Ui {
   hpFill: HTMLElement;
   hpText: HTMLElement;
   charge: HTMLElement;
-  allyHp: HTMLElement;
+  roster: HTMLElement;
   bones: HTMLElement;
   record: HTMLElement;
+  resultRecord: HTMLElement;
   modal: HTMLElement;
   retry: HTMLButtonElement;
   recruit: HTMLButtonElement;
@@ -91,10 +88,14 @@ export function startGame(): void {
   fit(ui, state);
   paintFinger(ui);
   paintBoneIcon(ui);
-  paintRecruit(ui);
+  paintRecruit(ui, state.save.allies);
   if (!state.save.tutorialDone) begin(state, ui, 'tutorial');
   else begin(state, ui, state.save.encounter);
-  if (state.save.recruitPending) openRecruit(state, ui);
+  if (state.save.recruitPending && keepRecruiting(state.save)) openRecruit(state, ui);
+  else if (state.save.recruitPending) {
+    state.save = { ...state.save, recruitPending: false };
+    writeSave(state.save);
+  }
 
   ui.commandButtons.forEach((button) => {
     button.addEventListener('click', () => {
@@ -107,24 +108,27 @@ export function startGame(): void {
   ui.retry.addEventListener('click', () => {
     unlockAudio();
     state.generation += 1;
-    begin(state, ui, campaignEncounter(state));
+    begin(state, ui, state.encounter);
   });
   ui.recruit.addEventListener('click', () => {
     unlockAudio();
     const next = recruitAlly(state.save);
     if (!next) return;
-    state.save = { ...next, recruitPending: false };
+    const more = keepRecruiting(next);
+    state.save = { ...next, recruitPending: more };
     writeSave(state.save);
+    paintRecruit(ui, state.save.allies);
+    if (more) {
+      openRecruit(state, ui);
+      return;
+    }
     state.generation += 1;
     begin(state, ui, state.save.encounter);
   });
 
   const onResize = () => {
     fit(ui, state);
-    if (state.tutorialStep !== null && state.phase === 'command') {
-      const command = config.tutorial.steps[state.tutorialStep];
-      if (command) placeFinger(ui, command);
-    }
+    if (state.phase === 'command') setCommands(ui, state, true);
   };
   window.addEventListener('resize', onResize);
   window.requestAnimationFrame(onResize);
@@ -173,6 +177,7 @@ function createState(save: SaveData): State {
     shards: [],
     reward: 0,
     allyHits: 0,
+    summon: 0,
     intro: 0,
     width: VIEW_W,
     height: VIEW_H,
@@ -206,18 +211,13 @@ function begin(state: State, ui: Ui, encounter: EncounterId): void {
   state.shards = [];
   state.reward = 0;
   state.allyHits = 0;
+  state.summon = 0;
   state.bang = intentAt(state.battle) === 'strike';
   state.intro = 1;
   state.phase = 'command';
   showModal(ui, null);
-  if (state.tutorialStep !== null) {
-    const first = config.tutorial.steps[0];
-    setCommands(ui, first ?? null);
-    if (first) placeFinger(ui, first);
-  } else {
-    setCommands(ui, 'all');
-    hideFinger(ui);
-  }
+  setCommands(ui, state, true);
+  hideFinger(ui);
   mark(state, ui);
 }
 
@@ -226,9 +226,10 @@ function openRecruit(state: State, ui: Ui): void {
   state.enemyVisible = false;
   state.bang = false;
   state.pose = 'idle';
-  setCommands(ui, null);
+  setCommands(ui, state, false);
   hideFinger(ui);
   showModal(ui, 'recruit');
+  paintRecruit(ui, state.save.allies);
   mark(state, ui);
 }
 
@@ -245,7 +246,7 @@ async function runTurn(state: State, ui: Ui, command: Command): Promise<void> {
   const generation = ++state.generation;
   const alive = () => generation === state.generation;
   state.phase = 'resolving';
-  setCommands(ui, null);
+  setCommands(ui, state, false);
   hideFinger(ui);
   mark(state, ui);
 
@@ -290,6 +291,34 @@ async function runTurn(state: State, ui: Ui, command: Command): Promise<void> {
       await wait(config.juice.guardMs * 0.45);
       break;
     }
+    case 'combo': {
+      playCharge();
+      await tween(480, alive, (t) => {
+        state.summon = t * 0.35;
+      });
+      if (!alive()) return;
+      playAttack();
+      let impacted = false;
+      await tween(360, alive, (t) => {
+        state.summon = 0.35 + t * 0.65;
+        state.allyPose = 'lunge';
+        if (impacted || t < 0.42) return;
+        impacted = true;
+        const total = result.allyDamage.reduce((sum, hit) => sum + hit, 0);
+        spawnNumber(state, total, 0.44, 0.36, true);
+        state.shownEnemyHp = result.battle.enemy.hp;
+        state.enemyFlash = 1;
+        state.shake = config.juice.shakeHeavy;
+        state.flash = 0.35;
+        playHit();
+        remember(state, total, false);
+      });
+      if (!alive()) return;
+      await wait(700);
+      state.summon = 0;
+      state.allyPose = 'idle';
+      break;
+    }
     default: {
       const neverCommand: never = command;
       throw new Error(`unknown command ${String(neverCommand)}`);
@@ -297,7 +326,7 @@ async function runTurn(state: State, ui: Ui, command: Command): Promise<void> {
   }
   if (!alive()) return;
 
-  if (state.shownEnemyHp > 0) {
+  if (command !== 'combo' && state.shownEnemyHp > 0) {
     for (const damage of result.allyDamage) {
       if (damage <= 0 || state.shownEnemyHp <= 0) continue;
       let impacted = false;
@@ -311,7 +340,7 @@ async function runTurn(state: State, ui: Ui, command: Command): Promise<void> {
         state.shownEnemyHp = Math.max(0, state.shownEnemyHp - damage);
         state.enemyFlash = 1;
         playHit();
-        remember(state, damage);
+        remember(state, damage, false);
       });
       state.allyPose = 'idle';
       state.allyOx = 0;
@@ -371,18 +400,14 @@ async function runTurn(state: State, ui: Ui, command: Command): Promise<void> {
     state.tutorialStep += 1;
     const next = config.tutorial.steps[state.tutorialStep];
     state.phase = 'command';
-    if (next) {
-      setCommands(ui, next);
-      placeFinger(ui, next);
-    } else {
-      setCommands(ui, 'all');
-    }
+    if (!next) state.tutorialStep = null;
+    setCommands(ui, state, true);
     mark(state, ui);
     return;
   }
 
   state.phase = 'command';
-  setCommands(ui, 'all');
+  setCommands(ui, state, true);
   mark(state, ui);
 }
 
@@ -390,7 +415,7 @@ function connectHeroHit(state: State, damage: number, scripted: boolean): void {
   spawnNumber(state, damage, scripted ? 0.5 : 0.46, scripted ? 0.55 : 0.4, scripted);
   state.shownEnemyHp = Math.max(0, state.battle.enemy.hp - damage);
   state.enemyFlash = 1;
-  remember(state, damage);
+  remember(state, damage, scripted);
   if (!scripted) {
     state.shake = damage >= state.battle.hero.attack * 8 ? config.juice.shakeHeavy : config.juice.shakeLight;
     state.flash = 0.55;
@@ -408,15 +433,11 @@ function connectHeroHit(state: State, damage: number, scripted: boolean): void {
 }
 
 async function onWin(state: State, ui: Ui, alive: () => boolean): Promise<void> {
-  if (state.encounter !== 'minion' && state.encounter !== 'boss') return;
-  const defeated: CampaignId = state.encounter;
+  if (!isCampaign(state.encounter)) return;
+  const defeated = state.encounter;
   state.phase = 'reward';
-  setCommands(ui, null);
-  state.save = grantBone(state.save);
-  state.save.encounter = nextEncounter(defeated);
-  if (defeated === 'boss' && state.save.allies < config.ally.prototypeRecruits) {
-    state.save.recruitPending = true;
-  }
+  setCommands(ui, state, false);
+  state.save = resolveWin(state.save, defeated);
   writeSave(state.save);
   playVictory();
   mark(state, ui);
@@ -510,9 +531,9 @@ function spawnFragments(state: State): void {
   }
 }
 
-function remember(state: State, damage: number): void {
-  if (damage <= 0) return;
-  const next = noteDamage(state.save, damage);
+function remember(state: State, damage: number, scripted: boolean): void {
+  if (scripted || damage <= 0) return;
+  const next = noteDamage(state.save, damage, false);
   if (next === state.save) return;
   state.save = next;
   writeSave(state.save);
@@ -540,10 +561,13 @@ function toScene(state: State): Scene {
     heroGlow: state.glow,
     heroFlash: state.heroFlash,
     heroPose: state.pose,
-    ally:
-      allyCount > 0
-        ? { x: place.allyX + state.allyOx, y: place.allyY, pose: state.allyPose }
-        : null,
+    allies: place.allies.slice(0, allyCount).map((slot, index) => ({
+      x: slot.x + (state.summon > 0 ? 0 : state.allyOx),
+      y: slot.y,
+      pose: state.allyPose,
+      index,
+    })),
+    summon: state.summon,
     bang: state.bang && state.enemyVisible,
     numbers: state.numbers,
     fragments: state.shards,
@@ -558,12 +582,37 @@ function syncHud(state: State, ui: Ui): void {
   ui.hpFill.style.width = `${atb}%`;
   ui.hpText.textContent = `${hp}/${config.hero.maxHp}`;
   ui.charge.textContent = state.battle.hero.multiplier > 1 ? `x${state.battle.hero.multiplier}` : '';
-  ui.enemyName.textContent = enemyName(state.encounter);
-  ui.allyHp.hidden = state.save.allies < 1 || state.encounter === 'tutorial';
+  ui.enemyName.textContent = config.encounters[state.encounter].name;
+  const shownAllies = state.encounter === 'tutorial' ? 0 : state.save.allies;
+  syncRoster(ui, shownAllies);
   ui.bones.textContent = String(state.save.bones);
-  ui.record.hidden = state.save.bestDamage <= 0;
-  ui.record.textContent = state.save.bestDamage > 0 ? String(state.save.bestDamage) : '';
+  const record = state.save.bestDamage > 0 ? String(state.save.bestDamage) : '';
+  ui.record.hidden = record === '';
+  ui.record.textContent = record;
+  const showResult = record !== '' && !ui.modal.hidden;
+  ui.resultRecord.hidden = !showResult;
+  ui.resultRecord.textContent = record;
   mark(state, ui);
+}
+
+function syncRoster(ui: Ui, allies: number): void {
+  if (ui.roster.dataset.count === String(allies)) {
+    ui.roster.hidden = allies < 1;
+    return;
+  }
+  ui.roster.replaceChildren();
+  for (let index = 0; index < allies; index += 1) {
+    const name = config.ally.names[index];
+    if (!name) continue;
+    const mate = document.createElement('span');
+    mate.className = 'mate';
+    mate.dataset.ally = String(index);
+    const swatch = document.createElement('i');
+    mate.append(swatch, document.createTextNode(name));
+    ui.roster.append(mate);
+  }
+  ui.roster.dataset.count = String(allies);
+  ui.roster.hidden = allies < 1;
 }
 
 function mark(state: State, ui: Ui): void {
@@ -578,6 +627,7 @@ function mark(state: State, ui: Ui): void {
   ui.app.dataset.heroHp = String(Math.round(state.shownHeroHp));
   ui.app.dataset.enemyHp = String(Math.max(0, Math.round(state.shownEnemyHp)));
   ui.app.dataset.multiplier = String(state.battle.hero.multiplier);
+  ui.app.dataset.summon = state.summon > 0.8 ? '1' : '0';
 }
 
 function fit(ui: Ui, state: State): void {
@@ -593,26 +643,21 @@ function fit(ui: Ui, state: State): void {
   ui.ctx.imageSmoothingEnabled = false;
 }
 
-function setCommands(ui: Ui, allow: Command | 'all' | null): void {
-  ui.commands.hidden = allow === null;
-  let cursor = '';
+function setCommands(ui: Ui, state: State, open: boolean): void {
+  ui.commands.hidden = !open;
+  const menu = commandMenu({
+    tutorialStep: state.phase === 'command' ? state.tutorialStep : null,
+    comboReady: quadChargeReady(state.save.allies, config.campaign.combo),
+    open,
+  });
   for (const button of ui.commandButtons) {
     const name = button.dataset.command ?? '';
-    const enabled = allow === 'all' || (allow !== null && name === allow);
-    button.disabled = !enabled;
-    if (!enabled) continue;
-    if (allow === 'all' && name === 'attack') cursor = name;
-    if (allow !== 'all' && allow !== null && name === allow) cursor = name;
-  }
-  for (const button of ui.commandButtons) {
-    button.dataset.cursor = button.dataset.command === cursor ? '1' : '0';
-  }
-}
-
-function placeFinger(ui: Ui, command: Command): void {
-  ui.finger.hidden = true;
-  for (const button of ui.commandButtons) {
-    button.dataset.cursor = button.dataset.command === command ? '1' : '0';
+    if (!isCommand(name)) continue;
+    const slot = menu[name];
+    button.hidden = slot.hidden;
+    button.disabled = slot.disabled;
+    button.dataset.dim = slot.disabled && !slot.hidden ? '1' : '0';
+    button.dataset.cursor = slot.hot ? '1' : '0';
   }
 }
 
@@ -641,13 +686,14 @@ function paintBoneIcon(ui: Ui): void {
   blit(ctx, boneSprite, ui.boneIcon.width / 2, ui.boneIcon.height, 2);
 }
 
-function paintRecruit(ui: Ui): void {
+function paintRecruit(ui: Ui, allyIndex: number): void {
   const ctx = ui.recruitBone.getContext('2d');
   if (!ctx) return;
   ctx.imageSmoothingEnabled = false;
   ctx.clearRect(0, 0, ui.recruitBone.width, ui.recruitBone.height);
-  blit(ctx, boneSprite, 70, 96, 3);
-  blit(ctx, hero, 156, 112, 2, { recolor: ALLY_RECOLOR });
+  blit(ctx, boneSprite, 64, 100, 3);
+  const sprite = allySprites[Math.min(allySprites.length - 1, Math.max(0, allyIndex))];
+  if (sprite) blit(ctx, sprite, 156, 112, 3);
 }
 
 function chargeStep(multiplier: number): number {
@@ -657,41 +703,15 @@ function chargeStep(multiplier: number): number {
 }
 
 function spriteFor(encounter: EncounterId): Sprite {
-  switch (encounter) {
-    case 'tutorial':
-      return dumpling;
-    case 'minion':
-      return imp;
-    case 'boss':
-      return boss;
-    default: {
-      const neverEncounter: never = encounter;
-      return neverEncounter;
-    }
-  }
+  return enemySprites[encounter];
 }
 
-function enemyName(encounter: EncounterId): string {
-  switch (encounter) {
-    case 'tutorial':
-      return 'だんご';
-    case 'minion':
-      return 'こおに';
-    case 'boss':
-      return 'まおう';
-    default: {
-      const neverEncounter: never = encounter;
-      return neverEncounter;
-    }
-  }
-}
-
-function campaignEncounter(state: State): CampaignId {
-  return state.encounter === 'boss' ? 'boss' : 'minion';
+function isCampaign(id: EncounterId): id is (typeof config.campaign.order)[number] {
+  return (config.campaign.order as readonly string[]).includes(id);
 }
 
 function isCommand(value: string): value is Command {
-  return value === 'attack' || value === 'charge' || value === 'guard';
+  return value === 'attack' || value === 'charge' || value === 'guard' || value === 'combo';
 }
 
 function bind(): Ui {
@@ -704,9 +724,10 @@ function bind(): Ui {
   const charge = document.querySelector('#charge');
   const hpFill = document.querySelector('#hp-fill');
   const hpText = document.querySelector('#hp-text');
-  const allyHp = document.querySelector('#ally-hp');
+  const roster = document.querySelector('#roster');
   const bones = document.querySelector('#bones');
   const record = document.querySelector('#record');
+  const resultRecord = document.querySelector('#result-record');
   const modal = document.querySelector('#modal');
   const retry = document.querySelector('#retry');
   const recruit = document.querySelector('#recruit');
@@ -722,9 +743,10 @@ function bind(): Ui {
     !(charge instanceof HTMLElement) ||
     !(hpFill instanceof HTMLElement) ||
     !(hpText instanceof HTMLElement) ||
-    !(allyHp instanceof HTMLElement) ||
+    !(roster instanceof HTMLElement) ||
     !(bones instanceof HTMLElement) ||
     !(record instanceof HTMLElement) ||
+    !(resultRecord instanceof HTMLElement) ||
     !(modal instanceof HTMLElement) ||
     !(retry instanceof HTMLButtonElement) ||
     !(recruit instanceof HTMLButtonElement) ||
@@ -748,9 +770,10 @@ function bind(): Ui {
     charge,
     hpFill,
     hpText,
-    allyHp,
+    roster,
     bones,
     record,
+    resultRecord,
     modal,
     retry,
     recruit,

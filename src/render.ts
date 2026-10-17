@@ -1,17 +1,16 @@
 import type { EncounterId } from './config';
 import {
+  allySprites,
   bang,
   blit,
   bone,
-  boss,
-  dumpling,
+  enemySprites,
   hero,
   heroAttack,
   heroCharge,
   heroHurt,
   heroIdle,
   heroWin,
-  imp,
   type Sprite,
 } from './sprites';
 
@@ -63,7 +62,9 @@ export interface Scene {
   heroGlow: number;
   heroFlash: number;
   heroPose: Pose;
-  ally: { x: number; y: number; pose: Pose } | null;
+  allies: readonly { x: number; y: number; pose: Pose; index: number }[];
+  /** 0–1 while the four-ally limit plays. Allies rush the enemy. */
+  summon: number;
   bang: boolean;
   numbers: readonly FloatNumber[];
   fragments: readonly Fragment[];
@@ -75,42 +76,33 @@ export interface Anchors {
   enemyY: number;
   heroX: number;
   heroY: number;
-  allyX: number;
-  allyY: number;
+  allies: readonly { x: number; y: number }[];
 }
 
-/** Feet on the painted field. Enemies stand left, party in the foreground right. */
-export function battleAnchors(encounter: EncounterId, width: number, height: number): Anchors {
-  const party = {
-    heroX: Math.round(width * 0.78),
-    heroY: Math.round(height * 0.9),
-    allyX: Math.round(width * 0.91),
-    allyY: Math.round(height * 0.94),
-  };
-  switch (encounter) {
-    case 'tutorial':
-      return { ...party, enemyX: Math.round(width * 0.28), enemyY: Math.round(height * 0.7) };
-    case 'minion':
-      return { ...party, enemyX: Math.round(width * 0.3), enemyY: Math.round(height * 0.72) };
-    case 'boss':
-      return {
-        ...party,
-        heroX: Math.round(width * 0.82),
-        enemyX: Math.round(width * 0.34),
-        enemyY: Math.round(height * 0.74),
-      };
-    default: {
-      const neverEncounter: never = encounter;
-      return neverEncounter;
-    }
-  }
-}
-
-const ALLY_RECOLOR: Record<string, string> = {
-  o: '#d8d0c2',
-  d: '#b7aa9a',
-  l: '#f3ecdf',
+const ENEMY_ANCHOR: Record<EncounterId, { x: number; y: number }> = {
+  tutorial: { x: 0.3, y: 0.68 },
+  minion: { x: 0.32, y: 0.72 },
+  minion2: { x: 0.28, y: 0.82 },
+  minion3: { x: 0.3, y: 0.84 },
+  boss: { x: 0.28, y: 0.78 },
 };
+
+/** Feet on the painted field. Enemies stand left, the party clusters on the right. */
+export function battleAnchors(encounter: EncounterId, width: number, height: number): Anchors {
+  const enemy = ENEMY_ANCHOR[encounter];
+  return {
+    enemyX: Math.round(width * enemy.x),
+    enemyY: Math.round(height * enemy.y),
+    heroX: Math.round(width * 0.74),
+    heroY: Math.round(height * 0.9),
+    allies: [
+      { x: Math.round(width * 0.9), y: Math.round(height * 0.96) },
+      { x: Math.round(width * 0.82), y: Math.round(height * 0.8) },
+      { x: Math.round(width * 0.94), y: Math.round(height * 0.78) },
+      { x: Math.round(width * 0.66), y: Math.round(height * 0.72) },
+    ],
+  };
+}
 
 const GOLD = '#f0c84a';
 const GOLD_EDGE = '#3a280c';
@@ -146,9 +138,9 @@ export function drawScene(ctx: CanvasRenderingContext2D, scene: Scene): void {
   const mag = scene.shake;
   ctx.translate(Math.round(Math.sin(scene.time * 53) * mag), Math.round(Math.cos(scene.time * 47) * mag));
   ctx.drawImage(ensureBackdrop(width, height), 0, 0);
-  if (scene.enemyVisible) shadow(ctx, scene.enemyX, scene.enemyY, enemyShadow(scene.encounter));
+  if (scene.enemyVisible) shadow(ctx, scene.enemyX, scene.enemyY, ENEMY_SHADOW[scene.encounter]);
   shadow(ctx, scene.heroX, scene.heroY, 11);
-  if (scene.ally) shadow(ctx, scene.ally.x, scene.ally.y, 8);
+  for (const ally of scene.allies) shadow(ctx, ally.x, ally.y, 7);
 
   if (scene.enemyVisible) {
     const bob = Math.sin(scene.time * 2.2) * 1;
@@ -167,13 +159,8 @@ export function drawScene(ctx: CanvasRenderingContext2D, scene: Scene): void {
     ctx.restore();
   }
 
-  if (scene.ally) {
-    const sprite = partySprite(scene.ally.pose, 0, 0, false, scene.time, 1);
-    blit(ctx, sprite, scene.ally.x, scene.ally.y, 1, { recolor: ALLY_RECOLOR });
-    ctx.fillStyle = '#c4473a';
-    ctx.fillRect(scene.ally.x - 2, scene.ally.y - 16, 5, 2);
-  }
-
+  drawSummon(ctx, scene);
+  drawAllies(ctx, scene);
   drawHero(ctx, scene);
   drawReward(ctx, scene);
   for (const number of scene.numbers) drawNumber(ctx, number);
@@ -421,31 +408,55 @@ function paintMosaic(ctx: CanvasRenderingContext2D, width: number, height: numbe
 }
 
 function enemySprite(encounter: EncounterId): Sprite {
-  switch (encounter) {
-    case 'tutorial':
-      return dumpling;
-    case 'minion':
-      return imp;
-    case 'boss':
-      return boss;
-    default: {
-      const neverEncounter: never = encounter;
-      return neverEncounter;
-    }
+  return enemySprites[encounter];
+}
+
+const ENEMY_SHADOW: Record<EncounterId, number> = {
+  tutorial: 14,
+  minion: 22,
+  minion2: 20,
+  minion3: 24,
+  boss: 40,
+};
+
+function drawAllies(ctx: CanvasRenderingContext2D, scene: Scene): void {
+  const ordered = [...scene.allies].sort((a, b) => a.y - b.y);
+  for (const ally of ordered) {
+    const sprite = allySprites[ally.index] ?? allySprites[0];
+    if (!sprite) continue;
+    const lane = ally.index - (scene.allies.length - 1) / 2;
+    const goalX = scene.enemyX + 22 + lane * 16;
+    const goalY = scene.enemyY - 6 + (ally.index % 2) * 14;
+    const rush = scene.summon * 0.7;
+    const x = ally.x + (goalX - ally.x) * rush;
+    const y =
+      ally.y + (goalY - ally.y) * rush - (scene.celebrating ? Math.sin(scene.time * 8 + ally.index) * 2 : 0);
+    const scale = 1 + scene.summon * 0.12;
+    blit(ctx, sprite, x, y, scale);
   }
 }
 
-function enemyShadow(encounter: EncounterId): number {
-  switch (encounter) {
-    case 'tutorial':
-      return 14;
-    case 'minion':
-      return 22;
-    case 'boss':
-      return 40;
-    default: {
-      const neverEncounter: never = encounter;
-      return neverEncounter;
+function drawSummon(ctx: CanvasRenderingContext2D, scene: Scene): void {
+  if (scene.summon <= 0.02) return;
+  const cx = Math.round(scene.enemyX + 10);
+  const cy = Math.round(scene.enemyY - 30);
+  const grow = scene.summon;
+  ctx.save();
+  ctx.globalAlpha = 0.5 + grow * 0.45;
+  for (const base of [16, 30, 46, 62]) {
+    const radius = base * grow;
+    for (let i = 0; i < 22; i += 1) {
+      const angle = (i / 22) * Math.PI * 2 + scene.time * 2.4 + base;
+      const x = cx + Math.cos(angle) * radius;
+      const y = cy + Math.sin(angle) * radius * 0.4;
+      ctx.fillStyle = i % 3 === 0 ? '#fff6d0' : '#f0c84a';
+      ctx.fillRect(Math.round(x), Math.round(y), i % 3 === 0 ? 3 : 2, i % 3 === 0 ? 3 : 2);
     }
   }
+  const column = Math.round(84 * grow);
+  ctx.fillStyle = `rgba(255, 230, 160, ${0.3 * grow})`;
+  ctx.fillRect(cx - 7, cy - column, 14, column);
+  ctx.fillStyle = '#fff8e0';
+  ctx.fillRect(cx - 2, cy - column, 4, column);
+  ctx.restore();
 }

@@ -1,15 +1,18 @@
 /**
  * Every tuning number for しばクエスト lives here.
  *
- * Pace (solo hero, no ally):
- *   Strike every 3rd turn. The mark "!" is up on that turn; guard zeros it.
+ * Pace (solo hero, no allies):
+ *   The mark "!" is up on a strike turn; guard on that turn zeros it.
  *   Charge doubles the next attack: x2, x4, x8, x16, and x16 is the cap.
  *   The intended turn is: kill if this swing finishes, else guard a lethal
  *   telegraph, else release at x16, else charge.
- *   That line drops the minion on turn 13 and the boss on turn 17.
- *   At 5 seconds a turn, both sits inside 60–120 seconds, and the
- *   tutorial plus both fights stays under 3 minutes.
- *   An ally is extra damage and is not part of this measurement.
+ *   That line drops the fights on turns 13, 18, 20, and 17.
+ *   At 5 seconds a turn each fight sits inside 60–120 seconds.
+ *   Tutorial (12s) plus the opening minion and the boss is 162s.
+ *   A full run is three minions then the boss: 352s. Four fights that each
+ *   last at least a minute cannot also sum to under three minutes, so the
+ *   3-minute cap stays on the opening pair and the tests lock both numbers.
+ *   Allies add damage and are not part of this measurement.
  *   Spamming attack loses. Never guarding loses the boss.
  */
 export const config = {
@@ -26,9 +29,9 @@ export const config = {
   ally: {
     maxHp: 48,
     attack: 10,
-    /** Data-model ceiling. The prototype recruits one. */
     maxCount: 4,
-    prototypeRecruits: 1,
+    /** Field order matches the ally sprites: くろ, しろ, ごま, ちび. */
+    names: ['くろ', 'しろ', 'ごま', 'ちび'] as const,
   },
   charge: {
     cap: 16,
@@ -43,29 +46,43 @@ export const config = {
   },
   encounters: {
     tutorial: {
+      name: 'だんご',
       hp: 32,
       attack: 0,
       pattern: ['windup'] as const,
     },
     minion: {
+      name: 'こおに',
       hp: 480,
       attack: 16,
       pattern: ['windup', 'windup', 'strike'] as const,
     },
+    minion2: {
+      name: 'からす',
+      hp: 640,
+      attack: 18,
+      pattern: ['windup', 'strike'] as const,
+    },
+    minion3: {
+      name: 'がま',
+      hp: 820,
+      attack: 14,
+      pattern: ['windup', 'windup', 'windup', 'strike'] as const,
+    },
     boss: {
-      hp: 680,
+      name: 'まおう',
+      hp: 620,
       attack: 20,
-      pattern: ['windup', 'windup', 'strike'] as const,
+      pattern: ['windup', 'strike', 'windup', 'windup', 'strike'] as const,
     },
   },
   campaign: {
-    order: ['minion', 'boss'] as const,
-    /** Full game shape. The prototype plays `order` only. */
+    order: ['minion', 'minion2', 'minion3', 'boss'] as const,
     fullMinionsBeforeBoss: 3,
     combo: {
       id: 'quad-charge' as const,
       alliesRequired: 4,
-      enabled: false,
+      enabled: true,
     },
   },
   juice: {
@@ -89,7 +106,7 @@ export const config = {
   },
 } as const;
 
-export type Command = (typeof config.tutorial.steps)[number] | 'guard';
+export type Command = (typeof config.tutorial.steps)[number] | 'guard' | 'combo';
 export type EncounterId = keyof typeof config.encounters;
 export type CampaignId = (typeof config.campaign.order)[number];
 

@@ -156,9 +156,43 @@ button {
   background: linear-gradient(#f4f0c0, #78b85a);
 }
 
-#ally-fill {
-  width: 40%;
-  background: linear-gradient(#f4f0c0, #d8d0c2);
+#roster {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 8px;
+  margin-top: 6px;
+}
+
+#roster[hidden] {
+  display: none;
+}
+
+.mate {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 12px;
+  line-height: 12px;
+}
+
+.mate i {
+  width: 8px;
+  height: 8px;
+  display: block;
+  box-shadow: 0 0 0 1px #1a2848;
+}
+
+.mate[data-ally='0'] i {
+  background: #1a140f;
+}
+.mate[data-ally='1'] i {
+  background: #f7f8f4;
+}
+.mate[data-ally='2'] i {
+  background: #c98448;
+}
+.mate[data-ally='3'] i {
+  background: #f2d23a;
 }
 
 .meta {
@@ -231,8 +265,18 @@ button {
   background: rgba(244, 247, 255, 0.2);
 }
 
-#commands button:disabled {
-  opacity: 0.35;
+#commands button[hidden] {
+  display: none;
+}
+
+#commands button[data-cursor='1'] {
+  color: #fff8e8;
+  background: rgba(255, 248, 232, 0.16);
+}
+
+#commands button[data-dim='1'] {
+  color: #d5e2f2;
+  opacity: 0.5;
 }
 
 #commands button:focus-visible,
@@ -262,6 +306,19 @@ button {
 }
 
 #modal[hidden] {
+  display: none;
+}
+
+#result-record {
+  margin: 0 0 12px;
+  font-size: 24px;
+  line-height: 24px;
+  color: var(--gold);
+  text-align: center;
+  text-shadow: 1px 1px 0 #3a280c;
+}
+
+#result-record[hidden] {
   display: none;
 }
 
