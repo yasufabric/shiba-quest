@@ -6,12 +6,10 @@
  *   Charge doubles the next attack: x2, x4, x8, x16, and x16 is the cap.
  *   The intended turn is: kill if this swing finishes, else guard a lethal
  *   telegraph, else release at x16, else charge.
- *   That line drops the fights on turns 13, 18, 20, and 17.
- *   At 5 seconds a turn each fight sits inside 60–120 seconds.
- *   Tutorial (12s) plus the opening minion and the boss is 162s.
- *   A full run is three minions then the boss: 352s. Four fights that each
- *   last at least a minute cannot also sum to under three minutes, so the
- *   3-minute cap stays on the opening pair and the tests lock both numbers.
+ *   A run is one minion, then the boss. The minion is a random pick from
+ *   こおに (13 turns, 65s), からす (14 turns, 70s), and がま (15 turns, 75s).
+ *   The boss falls on turn 17 (85s).
+ *   Tutorial (12s) plus that pair is 162s, 167s, or 172s, all within 180s.
  *   Allies add damage and are not part of this measurement.
  *   Spamming attack loses. Never guarding loses the boss.
  */
@@ -59,13 +57,13 @@ export const config = {
     },
     minion2: {
       name: 'からす',
-      hp: 640,
+      hp: 500,
       attack: 18,
       pattern: ['windup', 'strike'] as const,
     },
     minion3: {
       name: 'がま',
-      hp: 820,
+      hp: 640,
       attack: 14,
       pattern: ['windup', 'windup', 'windup', 'strike'] as const,
     },
@@ -77,8 +75,9 @@ export const config = {
     },
   },
   campaign: {
-    order: ['minion', 'minion2', 'minion3', 'boss'] as const,
-    fullMinionsBeforeBoss: 3,
+    /** One of these is picked at random for the minion fight. Then the boss. */
+    minions: ['minion', 'minion2', 'minion3'] as const,
+    boss: 'boss' as const,
     combo: {
       id: 'quad-charge' as const,
       alliesRequired: 4,
@@ -108,7 +107,8 @@ export const config = {
 
 export type Command = (typeof config.tutorial.steps)[number] | 'guard' | 'combo';
 export type EncounterId = keyof typeof config.encounters;
-export type CampaignId = (typeof config.campaign.order)[number];
+export type MinionId = (typeof config.campaign.minions)[number];
+export type CampaignId = MinionId | typeof config.campaign.boss;
 
 export const minFightTurns = Math.ceil(
   config.time.minFightSeconds / config.time.turnSeconds,
