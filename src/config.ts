@@ -93,8 +93,8 @@ export const config = {
     shatterMs: 1750,
     guardMs: 300,
     boneMs: 780,
-    /** Held after a minion win, outside the turn clock. */
-    victoryHoldMs: 900,
+    /** Held after a minion win, outside the turn clock. Not part of 162/167/172. */
+    victoryHoldMs: 1600,
     hitStopMs: 90,
     shakeTutorial: 6,
     shakeHeavy: 3,

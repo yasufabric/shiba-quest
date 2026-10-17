@@ -430,9 +430,10 @@ function drawHero(ctx: CanvasRenderingContext2D, scene: Scene): void {
     ctx.fillRect(x - radius, y - radius - 10, radius * 2, radius * 2);
   }
   const drawn = scene.heroPose === 'down' ? 2 : scene.heroScale;
-  blit(ctx, sprite, x, y, drawn);
+  const hop = scene.celebrating ? Math.round(Math.abs(Math.sin(scene.time * 6)) * 6) : 0;
+  blit(ctx, sprite, x, y - hop, drawn);
   if (scene.heroFlash > 0) {
-    blit(ctx, sprite, x, y, drawn, { tint: '#ffffff', alpha: scene.heroFlash });
+    blit(ctx, sprite, x, y - hop, drawn, { tint: '#ffffff', alpha: scene.heroFlash });
   }
 }
 
