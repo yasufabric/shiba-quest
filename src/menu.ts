@@ -32,6 +32,11 @@ export function commandMenu(input: {
   return slots;
 }
 
+/** Painted hand beside the guided command. The silent tutorial only. */
+export function fingerHint(tutorialStep: number | null, open: boolean): boolean {
+  return open && tutorialStep !== null;
+}
+
 function slotFor(
   command: MenuCommand,
   open: boolean,

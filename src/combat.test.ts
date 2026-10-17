@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { config, maxFightTurns, minFightTurns } from './config';
 import { continueAfterBoss, defaultSave, keepRecruiting, noteDamage, pickMinion, recruitAlly, resolveWin } from './campaign';
 import { intentAt, pacePolicy, quadChargeReady, simulate, step } from './combat';
-import { commandMenu } from './menu';
+import { commandMenu, fingerHint } from './menu';
 import { makeBattle } from './setup';
 import { allySprites, crow, heroDown, toad, type Sprite } from './sprites';
 
@@ -221,6 +221,13 @@ describe('tutorial commands', () => {
     expect(attack.guard.disabled).toBe(true);
     expect(attack.guard.hidden).toBe(false);
     expect(attack.combo.hidden).toBe(true);
+  });
+
+  it('points the drawn hand only while the tutorial menu is open', () => {
+    expect(fingerHint(0, true)).toBe(true);
+    expect(fingerHint(2, true)).toBe(true);
+    expect(fingerHint(null, true)).toBe(false);
+    expect(fingerHint(0, false)).toBe(false);
   });
 });
 

@@ -5,7 +5,7 @@ import { makeBattle } from './setup';
 import { loadSave, writeSave } from './save';
 import { hydrateMute, isMuted, playAttack, playCharge, playGuard, playHit, playShatter, playVictory, setMuted, unlockAudio } from './audio';
 import { battleAnchors, drawScene, VIEW_H, VIEW_W, type FloatNumber, type Fragment, type Pose, type Scene } from './render';
-import { commandMenu } from './menu';
+import { commandMenu, fingerHint } from './menu';
 import { meterLow, meterPercent } from './meters';
 import { bedForTutorial, refreshMusic, requestMusic } from './music';
 import { allySprites, blit, bone as boneSprite, enemySprites, finger, shatterBlocks, type Sprite } from './sprites';
@@ -255,7 +255,6 @@ function begin(state: State, ui: Ui, encounter: EncounterId): void {
   requestMusic(bedForTutorial(encounter === 'tutorial'));
   showModal(ui, null);
   setCommands(ui, state, true);
-  hideFinger(ui);
   mark(state, ui);
 }
 
@@ -265,7 +264,6 @@ function showTitle(state: State, ui: Ui): void {
   state.bang = false;
   state.pose = 'idle';
   setCommands(ui, state, false);
-  hideFinger(ui);
   showModal(ui, null);
   requestMusic(null);
   mark(state, ui);
@@ -281,7 +279,6 @@ function enterEnding(state: State, ui: Ui): void {
   state.bang = false;
   state.pose = 'idle';
   setCommands(ui, state, false);
-  hideFinger(ui);
   showModal(ui, null);
   mark(state, ui);
 }
@@ -292,7 +289,6 @@ function openRecruit(state: State, ui: Ui): void {
   state.bang = false;
   state.pose = 'idle';
   setCommands(ui, state, false);
-  hideFinger(ui);
   showModal(ui, 'recruit');
   paintRecruit(ui, state.save.allies);
   mark(state, ui);
@@ -312,7 +308,6 @@ async function runTurn(state: State, ui: Ui, command: Command): Promise<void> {
   const alive = () => generation === state.generation;
   state.phase = 'resolving';
   setCommands(ui, state, false);
-  hideFinger(ui);
   mark(state, ui);
 
   const scripted =
@@ -739,10 +734,29 @@ function setCommands(ui: Ui, state: State, open: boolean): void {
     button.dataset.dim = slot.disabled && !slot.hidden ? '1' : '0';
     button.dataset.cursor = slot.hot ? '1' : '0';
   }
+  syncFinger(ui, state, open);
 }
 
-function hideFinger(ui: Ui): void {
-  ui.finger.hidden = true;
+function syncFinger(ui: Ui, state: State, open: boolean): void {
+  const step = state.phase === 'command' ? state.tutorialStep : null;
+  const hot = fingerHint(step, open)
+    ? ui.commandButtons.find((button) => button.dataset.cursor === '1' && !button.hidden)
+    : undefined;
+  if (!hot) {
+    ui.finger.hidden = true;
+    return;
+  }
+  const appBox = ui.app.getBoundingClientRect();
+  const box = hot.getBoundingClientRect();
+  if (box.height === 0) {
+    ui.finger.hidden = true;
+    return;
+  }
+  const tipX = 24;
+  const tipY = 48;
+  ui.finger.style.left = `${Math.round(box.right - appBox.left - tipX)}px`;
+  ui.finger.style.top = `${Math.round(box.top - appBox.top + box.height / 2 - tipY)}px`;
+  ui.finger.hidden = false;
 }
 
 function showModal(ui: Ui, which: 'retry' | 'recruit' | null): void {
