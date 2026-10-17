@@ -661,7 +661,7 @@ function syncHud(state: State, ui: Ui): void {
   const record = state.save.bestDamage > 0 ? String(state.save.bestDamage) : '';
   ui.record.hidden = record === '';
   ui.record.textContent = record;
-  const showResult = record !== '' && !ui.modal.hidden;
+  const showResult = record !== '' && state.phase === 'defeat';
   ui.resultRecord.hidden = !showResult;
   ui.resultRecord.textContent = record;
   mark(state, ui);
