@@ -3,8 +3,10 @@
   --bg: #07090f;
   --ink: #f4f0e6;
   --gold: #f0c84a;
-  --frame: #d9d3c5;
-  --night: #12182e;
+  --frame: #d6e6ff;
+  --night: #1a306c;
+  --window-top: #9ec0ee;
+  --window-bottom: #1a306c;
 }
 
 * {
@@ -45,8 +47,12 @@ button {
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 12px 12px 6px;
-  min-height: 62px;
+  margin: 8px 8px 0;
+  padding: 8px 10px;
+  min-height: 58px;
+  background: linear-gradient(180deg, var(--window-top) 0%, #6e98d4 18%, #3d68b4 48%, #2a4c96 74%, var(--window-bottom) 100%);
+  border: 2px solid #070910;
+  box-shadow: inset 0 0 0 2px var(--frame), inset 0 0 0 4px #1c3878;
 }
 
 #bars {
@@ -59,14 +65,14 @@ button {
 
 .hp {
   position: relative;
-  height: 18px;
-  background: #2a1418;
-  box-shadow: 0 0 0 3px #070910, 0 0 0 5px var(--frame);
+  height: 16px;
+  background: #14203a;
+  box-shadow: inset 0 0 0 1px #070910, 0 0 0 1px var(--frame);
 }
 
 .hp.ally {
   height: 8px;
-  box-shadow: 0 0 0 2px #070910, 0 0 0 4px var(--frame);
+  box-shadow: inset 0 0 0 1px #070910, 0 0 0 1px var(--frame);
 }
 
 #hp-fill,
@@ -121,18 +127,27 @@ button {
   font-variant-numeric: tabular-nums;
 }
 
-#battle {
+#stage {
   flex: 1;
-  width: 100%;
   min-height: 0;
+  display: grid;
+  place-items: center;
+  background: var(--bg);
+}
+
+#battle {
   display: block;
+  width: 192px;
+  height: 224px;
+  background: var(--bg);
 }
 
 #commands {
-  margin: 0 10px calc(12px + env(safe-area-inset-bottom));
-  padding: 6px;
-  background: var(--night);
-  box-shadow: 0 0 0 3px #070910, 0 0 0 6px var(--frame);
+  margin: 8px 8px calc(8px + env(safe-area-inset-bottom));
+  padding: 4px;
+  background: linear-gradient(180deg, var(--window-top) 0%, #6e98d4 14%, #3d68b4 46%, #2a4c96 76%, var(--window-bottom) 100%);
+  border: 2px solid #070910;
+  box-shadow: inset 0 0 0 2px var(--frame), inset 0 0 0 4px #1c3878;
   display: flex;
   flex-direction: column;
 }
@@ -141,14 +156,15 @@ button {
   appearance: none;
   border: 0;
   background: transparent;
-  color: var(--ink);
+  color: #f4f7ff;
   font-weight: 800;
   font-size: 22px;
   letter-spacing: 0.14em;
   text-align: left;
   padding: 14px 16px;
   min-height: 64px;
-  border-bottom: 2px solid #2a3358;
+  text-shadow: 1px 1px 0 #10182e;
+  border-bottom: 2px solid #1c3878;
 }
 
 #commands button:last-child {
@@ -156,7 +172,7 @@ button {
 }
 
 #commands button:active:not(:disabled) {
-  background: #24345f;
+  background: rgba(214, 230, 255, 0.2);
 }
 
 #commands button:disabled {
@@ -207,13 +223,15 @@ button {
 #retry {
   appearance: none;
   border: 0;
-  background: var(--night);
-  color: var(--ink);
+  background: linear-gradient(180deg, var(--window-top) 0%, #3d68b4 48%, var(--window-bottom) 100%);
+  color: #f4f7ff;
   font-weight: 800;
   font-size: 28px;
   letter-spacing: 0.12em;
   padding: 22px 28px;
-  box-shadow: 0 0 0 4px #070910, 0 0 0 8px var(--frame);
+  text-shadow: 1px 1px 0 #10182e;
+  border: 2px solid #070910;
+  box-shadow: inset 0 0 0 2px var(--frame), inset 0 0 0 4px #1c3878;
 }
 
 #recruit {

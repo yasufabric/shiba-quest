@@ -4,7 +4,7 @@ import { intentAt, step, type Battle } from './combat';
 import { makeBattle } from './setup';
 import { loadSave, writeSave } from './save';
 import { playAttack, playCharge, playGuard, playHit, playShatter, playVictory, unlockAudio } from './audio';
-import { drawScene, type FloatNumber, type Fragment, type Pose, type Scene } from './render';
+import { battleAnchors, drawScene, VIEW_H, VIEW_W, type FloatNumber, type Fragment, type Pose, type Scene } from './render';
 import { blit, bone as boneSprite, boss, dumpling, finger, hero, imp, shatterBlocks, type Sprite } from './sprites';
 
 const rules = { chargeCap: config.charge.cap };
@@ -64,6 +64,7 @@ interface State {
 
 interface Ui {
   app: HTMLElement;
+  stage: HTMLElement;
   battle: HTMLCanvasElement;
   ctx: CanvasRenderingContext2D;
   finger: HTMLCanvasElement;
@@ -168,8 +169,8 @@ function createState(save: SaveData): State {
     shards: [],
     reward: 0,
     allyHits: 0,
-    width: 390,
-    height: 520,
+    width: VIEW_W,
+    height: VIEW_H,
     time: 0,
   };
 }
@@ -262,7 +263,7 @@ async function runTurn(state: State, ui: Ui, command: Command): Promise<void> {
       let impacted = false;
       await tween(config.juice.lungeMs, alive, (t) => {
         state.pose = 'lunge';
-        state.heroOx = -46 * Math.sin(t * Math.PI);
+        state.heroOx = -22 * Math.sin(t * Math.PI);
         if (impacted || t < 0.42) return;
         impacted = true;
         connectHeroHit(state, result.heroDamage, scripted);
@@ -296,7 +297,7 @@ async function runTurn(state: State, ui: Ui, command: Command): Promise<void> {
       let impacted = false;
       await tween(config.juice.allyMs, alive, (t) => {
         state.allyPose = 'lunge';
-        state.allyOx = -30 * Math.sin(t * Math.PI);
+        state.allyOx = -14 * Math.sin(t * Math.PI);
         if (impacted || t < 0.45) return;
         impacted = true;
         state.allyHits += 1;
@@ -315,8 +316,8 @@ async function runTurn(state: State, ui: Ui, command: Command): Promise<void> {
   if (result.battle.outcome !== 'win' && result.intent === 'strike') {
     let impacted = false;
     await tween(config.juice.strikeMs, alive, (t) => {
-      state.enemyOx = 30 * Math.sin(t * Math.PI);
-      state.enemyOy = 16 * Math.sin(t * Math.PI);
+      state.enemyOx = 12 * Math.sin(t * Math.PI);
+      state.enemyOy = 6 * Math.sin(t * Math.PI);
       if (impacted || t < 0.48) return;
       impacted = true;
       spawnNumber(state, result.enemyDamage, 0.66, 0.7, false);
@@ -380,7 +381,7 @@ async function runTurn(state: State, ui: Ui, command: Command): Promise<void> {
 }
 
 function connectHeroHit(state: State, damage: number, scripted: boolean): void {
-  spawnNumber(state, damage, scripted ? 0.5 : 0.42, scripted ? 0.3 : 0.38, scripted);
+  spawnNumber(state, damage, scripted ? 0.5 : 0.46, scripted ? 0.55 : 0.4, scripted);
   state.shownEnemyHp = Math.max(0, state.battle.enemy.hp - damage);
   state.enemyFlash = 1;
   remember(state, damage);
@@ -434,7 +435,7 @@ function advance(state: State, dt: number): void {
   state.enemyFlash = Math.max(0, state.enemyFlash - dt * 4);
   state.heroFlash = Math.max(0, state.heroFlash - dt * 4);
 
-  const gravity = 820;
+  const gravity = 200;
   for (const number of state.numbers) {
     number.vy += gravity * dt;
     number.y += number.vy * dt;
@@ -448,7 +449,7 @@ function advance(state: State, dt: number): void {
   state.numbers = state.numbers.filter((number) => number.life > 0);
 
   for (const shard of state.shards) {
-    shard.vy += 700 * dt;
+    shard.vy += 180 * dt;
     shard.x += shard.vx * dt;
     shard.y += shard.vy * dt;
     shard.rot += shard.vr * dt;
@@ -465,31 +466,32 @@ function spawnNumber(state: State, damage: number, xFrac: number, yFrac: number,
     text: String(damage),
     x: state.width * xFrac,
     y,
-    vy: big ? -280 : -190,
+    vy: big ? -70 : -48,
     life,
     max: life,
     scale,
-    floor: y + (big ? 46 : 22),
+    floor: y + (big ? 14 : 8),
   });
 }
 
 function spawnFragments(state: State): void {
   const sprite = spriteFor(state.encounter);
-  const scale = 4;
-  const originX = state.width * 0.4 + state.enemyOx;
-  const originY = state.height * 0.56 + state.enemyOy - (sprite.h * scale) / 2;
-  for (const block of shatterBlocks(sprite, 3)) {
+  const place = battleAnchors(state.encounter, state.width, state.height);
+  const originX = place.enemyX + state.enemyOx;
+  const originY = place.enemyY + state.enemyOy - sprite.h / 2;
+  const cell = sprite.w > 80 ? 4 : 3;
+  for (const block of shatterBlocks(sprite, cell)) {
     const angle = Math.atan2(block.dy, block.dx);
-    const speed = 80 + Math.random() * 240;
+    const speed = 22 + Math.random() * 36;
     state.shards.push({
-      x: originX + block.dx * scale,
-      y: originY + block.dy * scale,
+      x: originX + block.dx,
+      y: originY + block.dy,
       vx: Math.cos(angle) * speed,
-      vy: Math.sin(angle) * speed - 120,
+      vy: Math.sin(angle) * speed - 28,
       rot: 0,
-      vr: (Math.random() - 0.5) * 10,
+      vr: (Math.random() - 0.5) * 8,
       color: block.color,
-      size: block.size * scale,
+      size: block.size,
       life: 1.8,
       max: 1.8,
     });
@@ -506,6 +508,7 @@ function remember(state: State, damage: number): void {
 
 function toScene(state: State): Scene {
   const allyCount = state.encounter === 'tutorial' ? 0 : state.save.allies;
+  const place = battleAnchors(state.encounter, state.width, state.height);
   return {
     width: state.width,
     height: state.height,
@@ -514,18 +517,18 @@ function toScene(state: State): Scene {
     flash: state.flash,
     encounter: state.encounter,
     enemyVisible: state.enemyVisible && state.shownEnemyHp > 0,
-    enemyX: state.width * 0.4 + state.enemyOx,
-    enemyY: state.height * 0.58 + state.enemyOy,
+    enemyX: place.enemyX + state.enemyOx,
+    enemyY: place.enemyY + state.enemyOy,
     enemyFlash: state.enemyFlash,
-    heroX: state.width * 0.62 + state.heroOx,
-    heroY: state.height * 0.84,
+    heroX: place.heroX + state.heroOx,
+    heroY: place.heroY,
     heroScale: state.scale,
     heroGlow: state.glow,
     heroFlash: state.heroFlash,
     heroPose: state.pose,
     ally:
       allyCount > 0
-        ? { x: state.width * 0.86 + state.allyOx, y: state.height * 0.9, pose: state.allyPose }
+        ? { x: place.allyX + state.allyOx, y: place.allyY, pose: state.allyPose }
         : null,
     bang: state.bang && state.enemyVisible,
     numbers: state.numbers,
@@ -560,13 +563,15 @@ function mark(state: State, ui: Ui): void {
 }
 
 function fit(ui: Ui, state: State): void {
-  const rect = ui.battle.getBoundingClientRect();
-  const dpr = Math.max(1, Math.min(2, window.devicePixelRatio || 1));
-  state.width = Math.max(1, rect.width);
-  state.height = Math.max(1, rect.height);
-  ui.battle.width = Math.round(state.width * dpr);
-  ui.battle.height = Math.round(state.height * dpr);
-  ui.ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  const rect = ui.stage.getBoundingClientRect();
+  const scale = Math.max(1, Math.floor(Math.min(rect.width / VIEW_W, rect.height / VIEW_H)));
+  state.width = VIEW_W;
+  state.height = VIEW_H;
+  ui.battle.width = VIEW_W;
+  ui.battle.height = VIEW_H;
+  ui.battle.style.width = `${VIEW_W * scale}px`;
+  ui.battle.style.height = `${VIEW_H * scale}px`;
+  ui.ctx.setTransform(1, 0, 0, 1, 0, 0);
   ui.ctx.imageSmoothingEnabled = false;
 }
 
@@ -603,14 +608,14 @@ function paintFinger(ui: Ui): void {
   if (!ctx) return;
   ctx.imageSmoothingEnabled = false;
   ctx.clearRect(0, 0, ui.finger.width, ui.finger.height);
-  blit(ctx, finger, ui.finger.width / 2, ui.finger.height - 1, 4);
+  blit(ctx, finger, ui.finger.width / 2, ui.finger.height - 2, 3);
 }
 
 function paintBoneIcon(ui: Ui): void {
   const ctx = ui.boneIcon.getContext('2d');
   if (!ctx) return;
   ctx.imageSmoothingEnabled = false;
-  blit(ctx, boneSprite, ui.boneIcon.width / 2, ui.boneIcon.height - 1, 1);
+  blit(ctx, boneSprite, ui.boneIcon.width / 2, ui.boneIcon.height, 2);
 }
 
 function paintRecruit(ui: Ui): void {
@@ -618,8 +623,8 @@ function paintRecruit(ui: Ui): void {
   if (!ctx) return;
   ctx.imageSmoothingEnabled = false;
   ctx.clearRect(0, 0, ui.recruitBone.width, ui.recruitBone.height);
-  blit(ctx, boneSprite, 78, 108, 4);
-  blit(ctx, hero, 158, 112, 2, { recolor: ALLY_RECOLOR });
+  blit(ctx, boneSprite, 70, 96, 3);
+  blit(ctx, hero, 156, 112, 2, { recolor: ALLY_RECOLOR });
 }
 
 function chargeStep(multiplier: number): number {
@@ -653,6 +658,7 @@ function isCommand(value: string): value is Command {
 
 function bind(): Ui {
   const app = document.querySelector('#app');
+  const stage = document.querySelector('#stage');
   const battle = document.querySelector('#battle');
   const fingerCanvas = document.querySelector('#finger');
   const hpFill = document.querySelector('#hp-fill');
@@ -667,6 +673,7 @@ function bind(): Ui {
   const boneIcon = document.querySelector('#bone-icon');
   if (
     !(app instanceof HTMLElement) ||
+    !(stage instanceof HTMLElement) ||
     !(battle instanceof HTMLCanvasElement) ||
     !(fingerCanvas instanceof HTMLCanvasElement) ||
     !(hpFill instanceof HTMLElement) ||
@@ -687,6 +694,7 @@ function bind(): Ui {
   const commandButtons = Array.from(app.querySelectorAll<HTMLButtonElement>('#commands button'));
   return {
     app,
+    stage,
     battle,
     ctx,
     finger: fingerCanvas,
