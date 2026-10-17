@@ -15,6 +15,12 @@
       <div id="stage">
         <canvas id="battle" width="192" height="240"></canvas>
       </div>
+      <div id="commands" class="window" hidden>
+        <button type="button" data-command="attack"><i class="mark"></i>こうげき</button>
+        <button type="button" data-command="charge"><i class="mark"></i>ためる</button>
+        <button type="button" data-command="guard"><i class="mark"></i>まもる</button>
+        <button type="button" data-command="combo" hidden><i class="mark"></i>れんけい</button>
+      </div>
       <div id="desk">
         <section id="enemies" class="window">
           <p id="enemy-name">だんご</p>
@@ -36,12 +42,6 @@
             <span id="record" hidden></span>
           </div>
         </section>
-      </div>
-      <div id="commands" class="window" hidden>
-        <button type="button" data-command="attack"><i class="mark"></i>こうげき</button>
-        <button type="button" data-command="charge"><i class="mark"></i>ためる</button>
-        <button type="button" data-command="guard"><i class="mark"></i>まもる</button>
-        <button type="button" data-command="combo" hidden><i class="mark"></i>れんけい</button>
       </div>
       <canvas id="finger" width="48" height="64" hidden></canvas>
       <div id="modal" hidden>
