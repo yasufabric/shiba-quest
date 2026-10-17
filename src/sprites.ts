@@ -232,6 +232,26 @@ export const heroWin: Sprite = {
   ],
 };
 
+/** Lying on the path after a loss. Feet stay on the same baseline as the standing sprite. */
+export const heroDown: Sprite = {
+  w: 32,
+  h: 12,
+  rows: [
+    '................................',
+    '..............kk................',
+    '.............koolk..............',
+    '........kkkkkolook..............',
+    '.......kwwwwwkwwllk.............',
+    '......kwlllllllllwwk............',
+    '......kwwwwwwwwwwwwwk...........',
+    '.......kkkkkooooookkk...........',
+    '...........kok..kok.............',
+    '...........kdk..kdk.............',
+    '............k....k..............',
+    '................................',
+  ],
+};
+
 export const heroCharge: Sprite = {
   w: 24,
   h: 28,

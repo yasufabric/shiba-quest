@@ -294,6 +294,26 @@ button {
   outline-offset: 2px;
 }
 
+#curtain {
+  position: absolute;
+  inset: 0;
+  z-index: 4;
+  border: 0;
+  padding: 0;
+  background: transparent;
+}
+
+#curtain[hidden] {
+  display: none;
+}
+
+#app[data-phase='title'] #desk,
+#app[data-phase='title'] #commands,
+#app[data-phase='ending'] #desk,
+#app[data-phase='ending'] #commands {
+  visibility: hidden;
+}
+
 #mute {
   position: absolute;
   top: calc(8px + env(safe-area-inset-top));

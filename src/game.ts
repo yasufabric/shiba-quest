@@ -1,5 +1,5 @@
 import { config, type Command, type EncounterId } from './config';
-import { isCampaignId, keepRecruiting, noteDamage, pickMinion, recruitAlly, resolveWin, type SaveData } from './campaign';
+import { continueAfterBoss, isCampaignId, keepRecruiting, noteDamage, pickMinion, recruitAlly, resolveWin, type SaveData } from './campaign';
 import { intentAt, quadChargeReady, step, type Battle } from './combat';
 import { makeBattle } from './setup';
 import { loadSave, writeSave } from './save';
@@ -23,7 +23,7 @@ interface Popup extends FloatNumber {
   floor: number;
 }
 
-type Phase = 'command' | 'resolving' | 'shatter' | 'reward' | 'recruit' | 'defeat';
+type Phase = 'title' | 'command' | 'resolving' | 'shatter' | 'reward' | 'ending' | 'recruit' | 'defeat';
 
 interface State {
   save: SaveData;
@@ -84,6 +84,7 @@ interface Ui {
   recruitBone: HTMLCanvasElement;
   boneIcon: HTMLCanvasElement;
   mute: HTMLButtonElement;
+  curtain: HTMLButtonElement;
 }
 
 export function startGame(): void {
@@ -94,12 +95,13 @@ export function startGame(): void {
   paintFinger(ui);
   paintBoneIcon(ui);
   paintRecruit(ui, state.save.allies);
-  if (!state.save.tutorialDone) begin(state, ui, 'tutorial');
-  else begin(state, ui, state.save.encounter);
   if (state.save.recruitPending && keepRecruiting(state.save)) openRecruit(state, ui);
-  else if (state.save.recruitPending) {
-    state.save = { ...state.save, recruitPending: false };
-    writeSave(state.save);
+  else {
+    if (state.save.recruitPending) {
+      state.save = { ...state.save, recruitPending: false };
+      writeSave(state.save);
+    }
+    showTitle(state, ui);
   }
 
   ui.commandButtons.forEach((button) => {
@@ -120,6 +122,30 @@ export function startGame(): void {
     setMuted(!isMuted());
     ui.mute.dataset.muted = isMuted() ? '1' : '0';
     refreshMusic();
+  });
+  ui.curtain.addEventListener('click', () => {
+    unlockAudio();
+    if (state.phase === 'title') {
+      if (!state.save.tutorialDone) requestMusic(null);
+      const encounter = state.save.tutorialDone ? state.save.encounter : 'tutorial';
+      begin(state, ui, encounter);
+      return;
+    }
+    if (state.phase !== 'ending') return;
+    const next = continueAfterBoss(state.save);
+    switch (next) {
+      case 'recruit':
+        openRecruit(state, ui);
+        return;
+      case 'fight':
+        state.generation += 1;
+        begin(state, ui, state.save.encounter);
+        return;
+      default: {
+        const neverNext: never = next;
+        throw new Error(`unknown curtain ${String(neverNext)}`);
+      }
+    }
   });
   ui.recruit.addEventListener('click', () => {
     unlockAudio();
@@ -230,6 +256,33 @@ function begin(state: State, ui: Ui, encounter: EncounterId): void {
   showModal(ui, null);
   setCommands(ui, state, true);
   hideFinger(ui);
+  mark(state, ui);
+}
+
+function showTitle(state: State, ui: Ui): void {
+  state.phase = 'title';
+  state.enemyVisible = false;
+  state.bang = false;
+  state.pose = 'idle';
+  setCommands(ui, state, false);
+  hideFinger(ui);
+  showModal(ui, null);
+  requestMusic(null);
+  mark(state, ui);
+}
+
+function isEnding(state: State): boolean {
+  return state.phase === 'ending';
+}
+
+function enterEnding(state: State, ui: Ui): void {
+  state.phase = 'ending';
+  state.enemyVisible = false;
+  state.bang = false;
+  state.pose = 'idle';
+  setCommands(ui, state, false);
+  hideFinger(ui);
+  showModal(ui, null);
   mark(state, ui);
 }
 
@@ -406,6 +459,7 @@ async function runTurn(state: State, ui: Ui, command: Command): Promise<void> {
   }
   if (state.battle.outcome === 'lose') {
     state.phase = 'defeat';
+    state.pose = 'down';
     showModal(ui, 'retry');
     mark(state, ui);
     return;
@@ -462,10 +516,15 @@ async function onWin(state: State, ui: Ui, alive: () => boolean): Promise<void> 
   });
   if (!alive()) return;
   state.reward = 0;
-  if (state.save.recruitPending) {
-    openRecruit(state, ui);
+  if (defeated === config.campaign.boss) {
+    enterEnding(state, ui);
+    await wait(720);
+    if (!alive() || !isEnding(state)) return;
+    requestMusic('title');
     return;
   }
+  await wait(config.juice.victoryHoldMs);
+  if (!alive()) return;
   begin(state, ui, state.save.encounter);
 }
 
@@ -477,7 +536,7 @@ function advance(state: State, dt: number): void {
   state.shake *= Math.exp(-dt * 2.2);
   if (state.shake < 0.15) state.shake = 0;
   state.flash = Math.max(0, state.flash - dt * 2.4);
-  state.enemyFlash = Math.max(0, state.enemyFlash - dt * 4);
+  state.enemyFlash = Math.max(0, state.enemyFlash - dt * 1.6);
   state.heroFlash = Math.max(0, state.heroFlash - dt * 4);
 
   const gravity = 200;
@@ -565,7 +624,7 @@ function toScene(state: State): Scene {
     shake: state.shake,
     flash: state.flash,
     intro: state.intro,
-    celebrating: state.phase === 'reward' || state.reward > 0,
+    celebrating: state.phase === 'reward' || state.phase === 'ending' || state.reward > 0,
     encounter: state.encounter,
     enemyVisible: state.enemyVisible && state.shownEnemyHp > 0,
     enemyX: place.enemyX + state.enemyOx,
@@ -584,6 +643,7 @@ function toScene(state: State): Scene {
       index,
     })),
     summon: state.summon,
+    curtain: state.phase === 'title' ? 'title' : state.phase === 'ending' ? 'ending' : null,
     bang: state.bang && state.enemyVisible,
     numbers: state.numbers,
     fragments: state.shards,
@@ -645,6 +705,8 @@ function mark(state: State, ui: Ui): void {
   ui.app.dataset.enemyHp = String(Math.max(0, Math.round(state.shownEnemyHp)));
   ui.app.dataset.multiplier = String(state.battle.hero.multiplier);
   ui.app.dataset.summon = state.summon > 0.8 ? '1' : '0';
+  ui.app.dataset.pose = state.pose;
+  ui.curtain.hidden = state.phase !== 'title' && state.phase !== 'ending';
 }
 
 function fit(ui: Ui, state: State): void {
@@ -752,6 +814,7 @@ function bind(): Ui {
   const recruitBone = document.querySelector('#recruit-bone');
   const boneIcon = document.querySelector('#bone-icon');
   const mute = document.querySelector('#mute');
+  const curtain = document.querySelector('#curtain');
   if (
     !(app instanceof HTMLElement) ||
     !(stage instanceof HTMLElement) ||
@@ -772,7 +835,8 @@ function bind(): Ui {
     !(recruit instanceof HTMLButtonElement) ||
     !(recruitBone instanceof HTMLCanvasElement) ||
     !(boneIcon instanceof HTMLCanvasElement) ||
-    !(mute instanceof HTMLButtonElement)
+    !(mute instanceof HTMLButtonElement) ||
+    !(curtain instanceof HTMLButtonElement)
   ) {
     throw new Error('battle markup is missing');
   }
@@ -802,6 +866,7 @@ function bind(): Ui {
     recruitBone,
     boneIcon,
     mute,
+    curtain,
   };
 }
 

@@ -63,6 +63,12 @@ export function resolveWin(save: SaveData, defeated: CampaignId, roll = 0): Save
   };
 }
 
+/** The boss card dismisses into recruit while a slot and a bone are waiting. */
+export function continueAfterBoss(save: SaveData): 'recruit' | 'fight' {
+  if (save.recruitPending && keepRecruiting(save)) return 'recruit';
+  return 'fight';
+}
+
 /** Scripted hits, including the tutorial 9999, never enter the record. */
 export function noteDamage(save: SaveData, damage: number, scripted = false): SaveData {
   if (scripted) return save;

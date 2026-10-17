@@ -8,13 +8,14 @@ import {
   hero,
   heroAttack,
   heroCharge,
+  heroDown,
   heroHurt,
   heroIdle,
   heroWin,
   type Sprite,
 } from './sprites';
 
-export type Pose = 'idle' | 'lunge' | 'guard';
+export type Pose = 'idle' | 'lunge' | 'guard' | 'down';
 
 /**
  * Battle framebuffer. 192×240 integer-scales by 2 above the windows on a
@@ -65,6 +66,7 @@ export interface Scene {
   allies: readonly { x: number; y: number; pose: Pose; index: number }[];
   /** 0–1 while the four-ally limit plays. Allies rush the enemy. */
   summon: number;
+  curtain: 'title' | 'ending' | null;
   bang: boolean;
   numbers: readonly FloatNumber[];
   fragments: readonly Fragment[];
@@ -138,6 +140,11 @@ export function drawScene(ctx: CanvasRenderingContext2D, scene: Scene): void {
   const mag = scene.shake;
   ctx.translate(Math.round(Math.sin(scene.time * 53) * mag), Math.round(Math.cos(scene.time * 47) * mag));
   ctx.drawImage(ensureBackdrop(width, height), 0, 0);
+  if (scene.curtain) {
+    drawCurtain(ctx, scene);
+    ctx.restore();
+    return;
+  }
   if (scene.enemyVisible) shadow(ctx, scene.enemyX, scene.enemyY, ENEMY_SHADOW[scene.encounter]);
   shadow(ctx, scene.heroX, scene.heroY, 11);
   for (const ally of scene.allies) shadow(ctx, ally.x, ally.y, 7);
@@ -285,7 +292,52 @@ function drawEnemy(ctx: CanvasRenderingContext2D, scene: Scene, bob: number): vo
       tint: '#ffffff',
       alpha: scene.enemyFlash,
     });
+    drawSpark(ctx, scene.enemyX, scene.enemyY + bob - sprite.h * 0.55, scene.enemyFlash);
   }
+}
+
+function drawSpark(ctx: CanvasRenderingContext2D, x: number, y: number, flash: number): void {
+  ctx.save();
+  ctx.globalAlpha = Math.max(0, Math.min(1, flash));
+  ctx.fillStyle = '#fffaf4';
+  const x0 = Math.round(x - 10);
+  const y0 = Math.round(y - 8);
+  for (let i = 0; i < 16; i += 1) {
+    ctx.fillRect(x0 + i, y0 + Math.round(i * 0.7), 2, 2);
+  }
+  ctx.fillStyle = '#f0c84a';
+  for (const [dx, dy] of [
+    [-9, -6],
+    [8, -4],
+    [6, 6],
+    [-7, 5],
+    [0, -9],
+  ] as const) {
+    ctx.fillRect(Math.round(x + dx), Math.round(y + dy), 3, 3);
+  }
+  ctx.restore();
+}
+
+function drawCurtain(ctx: CanvasRenderingContext2D, scene: Scene): void {
+  const title = scene.curtain === 'title';
+  const x = Math.round(scene.width * 0.5);
+  const y = Math.round(scene.height * (title ? 0.62 : 0.7));
+  const bob = Math.sin(scene.time * 2) * (title ? 1 : 0);
+  if (!title) {
+    for (const ally of scene.allies) {
+      const sprite = allySprites[ally.index] ?? allySprites[0];
+      if (!sprite) continue;
+      blit(ctx, sprite, x - 28 + ally.index * 18, y + 8, 1);
+    }
+  }
+  blit(ctx, title ? hero : heroWin, x, y + bob, title ? 2 : 1);
+  ctx.font = '24px PixelMplus12, monospace';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'top';
+  ctx.fillStyle = '#1a2438';
+  ctx.fillText('しばクエスト', x + 1, 29);
+  ctx.fillStyle = '#f7f4ee';
+  ctx.fillText('しばクエスト', x, 28);
 }
 
 function drawBang(ctx: CanvasRenderingContext2D, scene: Scene, bob: number): void {
@@ -303,9 +355,10 @@ function drawHero(ctx: CanvasRenderingContext2D, scene: Scene): void {
     ctx.fillStyle = `rgba(226,236,255,${0.22 * scene.heroGlow})`;
     ctx.fillRect(x - radius, y - radius - 10, radius * 2, radius * 2);
   }
-  blit(ctx, sprite, x, y, scene.heroScale);
+  const drawn = scene.heroPose === 'down' ? 2 : scene.heroScale;
+  blit(ctx, sprite, x, y, drawn);
   if (scene.heroFlash > 0) {
-    blit(ctx, sprite, x, y, scene.heroScale, { tint: '#ffffff', alpha: scene.heroFlash });
+    blit(ctx, sprite, x, y, drawn, { tint: '#ffffff', alpha: scene.heroFlash });
   }
   if (scene.heroPose === 'guard') {
     const sx = x - 16;
@@ -320,6 +373,7 @@ function drawHero(ctx: CanvasRenderingContext2D, scene: Scene): void {
 }
 
 function partySprite(pose: Pose, glow: number, flash: number, celebrating: boolean, time: number, offset: number): Sprite {
+  if (pose === 'down') return heroDown;
   if (celebrating) return heroWin;
   if (flash > 0.35) return heroHurt;
   if (pose === 'lunge') return heroAttack;
