@@ -1,5 +1,5 @@
 import { config, type Command, type EncounterId } from './config';
-import { keepRecruiting, noteDamage, recruitAlly, resolveWin, type SaveData } from './campaign';
+import { isCampaignId, keepRecruiting, noteDamage, pickMinion, recruitAlly, resolveWin, type SaveData } from './campaign';
 import { intentAt, quadChargeReady, step, type Battle } from './combat';
 import { makeBattle } from './setup';
 import { loadSave, writeSave } from './save';
@@ -381,7 +381,10 @@ async function runTurn(state: State, ui: Ui, command: Command): Promise<void> {
     if (!alive()) return;
     state.numbers = [];
     state.shards = [];
-    begin(state, ui, 'minion');
+    const minion = pickMinion(Math.random());
+    state.save = { ...state.save, encounter: minion };
+    writeSave(state.save);
+    begin(state, ui, minion);
     return;
   }
 
@@ -437,7 +440,7 @@ async function onWin(state: State, ui: Ui, alive: () => boolean): Promise<void> 
   const defeated = state.encounter;
   state.phase = 'reward';
   setCommands(ui, state, false);
-  state.save = resolveWin(state.save, defeated);
+  state.save = resolveWin(state.save, defeated, Math.random());
   writeSave(state.save);
   playVictory();
   mark(state, ui);
@@ -706,8 +709,8 @@ function spriteFor(encounter: EncounterId): Sprite {
   return enemySprites[encounter];
 }
 
-function isCampaign(id: EncounterId): id is (typeof config.campaign.order)[number] {
-  return (config.campaign.order as readonly string[]).includes(id);
+function isCampaign(id: EncounterId): id is Exclude<EncounterId, 'tutorial'> {
+  return isCampaignId(id);
 }
 
 function isCommand(value: string): value is Command {

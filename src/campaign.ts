@@ -1,4 +1,4 @@
-import { config, type CampaignId } from './config';
+import { config, type CampaignId, type MinionId } from './config';
 
 export interface SaveData {
   tutorialDone: boolean;
@@ -16,7 +16,7 @@ export function defaultSave(): SaveData {
     bestDamage: 0,
     bones: 0,
     allies: 0,
-    encounter: config.campaign.order[0],
+    encounter: config.campaign.minions[0],
     recruitPending: false,
   };
 }
@@ -36,25 +36,31 @@ export function keepRecruiting(save: SaveData): boolean {
   return save.bones >= 1 && save.allies < config.ally.maxCount;
 }
 
-/**
- * A win banks one bone and walks the campaign.
- * Minion bones wait. The recruit screen opens after the boss, one ally at a time.
- * The tutorial never calls this.
- */
-export function resolveWin(save: SaveData, defeated: CampaignId): SaveData {
-  const paid = grantBone(save);
-  return {
-    ...paid,
-    encounter: nextEncounter(defeated),
-    recruitPending: defeated === 'boss' && paid.allies < config.ally.maxCount,
-  };
+/** `roll` is in [0, 1). Each slice of the pool is one minion. */
+export function pickMinion(roll: number): MinionId {
+  const pool = config.campaign.minions;
+  const index = Math.min(pool.length - 1, Math.max(0, Math.floor(roll * pool.length)));
+  return pool[index] ?? pool[0];
 }
 
-export function nextEncounter(current: CampaignId): CampaignId {
-  const order = config.campaign.order;
-  const index = order.indexOf(current);
-  const next = order[(index + 1) % order.length];
-  return next ?? order[0];
+export function isCampaignId(value: unknown): value is CampaignId {
+  if (value === config.campaign.boss) return true;
+  return typeof value === 'string' && (config.campaign.minions as readonly string[]).includes(value);
+}
+
+/**
+ * A win banks one bone. A minion leads to the boss. The boss leads to a new
+ * random minion and opens recruit, one ally at a time. The tutorial never calls this.
+ * Two bones a run, so four allies take more than one run.
+ */
+export function resolveWin(save: SaveData, defeated: CampaignId, roll = 0): SaveData {
+  const paid = grantBone(save);
+  const bossDown = defeated === config.campaign.boss;
+  return {
+    ...paid,
+    encounter: bossDown ? pickMinion(roll) : config.campaign.boss,
+    recruitPending: bossDown && paid.allies < config.ally.maxCount,
+  };
 }
 
 /** Scripted hits, including the tutorial 9999, never enter the record. */

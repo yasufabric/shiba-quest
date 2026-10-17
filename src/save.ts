@@ -1,9 +1,5 @@
-import { config, type CampaignId } from './config';
-import { defaultSave, type SaveData } from './campaign';
-
-function isCampaignId(value: unknown): value is CampaignId {
-  return typeof value === 'string' && (config.campaign.order as readonly string[]).includes(value);
-}
+import { config } from './config';
+import { defaultSave, isCampaignId, type SaveData } from './campaign';
 
 const KEY = 'shiba-quest';
 

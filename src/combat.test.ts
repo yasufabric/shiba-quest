@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { config, type CampaignId, maxFightTurns, minFightTurns } from './config';
-import { defaultSave, keepRecruiting, nextEncounter, noteDamage, recruitAlly, resolveWin } from './campaign';
+import { config, maxFightTurns, minFightTurns } from './config';
+import { defaultSave, keepRecruiting, noteDamage, pickMinion, recruitAlly, resolveWin } from './campaign';
 import { intentAt, pacePolicy, quadChargeReady, simulate, step } from './combat';
 import { commandMenu } from './menu';
 import { makeBattle } from './setup';
@@ -96,20 +96,30 @@ describe('fight length', () => {
 });
 
 describe('fight length', () => {
-  it('drops every encounter inside the one-to-two minute window', () => {
-    const ids = ['minion', 'minion2', 'minion3', 'boss'] as const;
-    const measured = ids.map((id) => {
+  it('keeps tutorial plus any minion plus the boss within three minutes', () => {
+    const boss = simulate(makeBattle('boss', 0), (battle) => pacePolicy(battle, rules.chargeCap), rules, 80);
+    expect(boss.battle.outcome).toBe('win');
+    expect(boss.turns).toBe(17);
+    const bossSeconds = boss.turns * config.time.turnSeconds;
+    expect(bossSeconds).toBe(85);
+
+    const measured = config.campaign.minions.map((id) => {
       const sim = simulate(makeBattle(id, 0), (battle) => pacePolicy(battle, rules.chargeCap), rules, 80);
       expect(sim.battle.outcome).toBe('win');
       expect(sim.turns).toBeGreaterThanOrEqual(minFightTurns);
       expect(sim.turns).toBeLessThanOrEqual(maxFightTurns);
-      expect(sim.turns * config.time.turnSeconds).toBeGreaterThanOrEqual(config.time.minFightSeconds);
-      expect(sim.turns * config.time.turnSeconds).toBeLessThanOrEqual(config.time.maxFightSeconds);
-      return sim.turns;
+      const seconds = sim.turns * config.time.turnSeconds;
+      const sum = config.tutorial.seconds + seconds + bossSeconds;
+      expect(sum).toBeLessThanOrEqual(config.time.sessionMaxSeconds);
+      return { id, turns: sim.turns, seconds, sum };
     });
-    expect(measured).toEqual([13, 18, 20, 17]);
-    const fullSeconds = config.tutorial.seconds + measured.reduce((sum, turns) => sum + turns, 0) * config.time.turnSeconds;
-    expect(fullSeconds).toBe(352);
+
+    expect(measured).toEqual([
+      { id: 'minion', turns: 13, seconds: 65, sum: 162 },
+      { id: 'minion2', turns: 14, seconds: 70, sum: 167 },
+      { id: 'minion3', turns: 15, seconds: 75, sum: 172 },
+    ]);
+    expect(config.tutorial.seconds).toBe(12);
   });
 });
 
@@ -136,37 +146,36 @@ describe('variety', () => {
 });
 
 describe('campaign', () => {
-  it('walks three minions then the boss, and recruits one ally at a time after the boss', () => {
-    expect(config.campaign.order).toEqual(['minion', 'minion2', 'minion3', 'boss']);
-    expect(config.campaign.fullMinionsBeforeBoss).toBe(3);
-    expect(nextEncounter('minion')).toBe('minion2');
-    expect(nextEncounter('minion2')).toBe('minion3');
-    expect(nextEncounter('minion3')).toBe('boss');
-    expect(nextEncounter('boss')).toBe('minion');
+  it('plays one random minion then the boss, and fills the party across runs', () => {
+    expect(config.campaign.minions).toEqual(['minion', 'minion2', 'minion3']);
+    expect(pickMinion(0)).toBe('minion');
+    expect(pickMinion(0.2)).toBe('minion');
+    expect(pickMinion(0.5)).toBe('minion2');
+    expect(pickMinion(0.99)).toBe('minion3');
 
-    let save = defaultSave();
-    const minions: CampaignId[] = ['minion', 'minion2', 'minion3'];
-    for (const id of minions) {
-      save = resolveWin(save, id);
-      expect(save.recruitPending).toBe(false);
-    }
-    expect(save.bones).toBe(3);
-    expect(save.encounter).toBe('boss');
-    save = resolveWin(save, 'boss');
-    expect(save).toMatchObject({ bones: 4, allies: 0, encounter: 'minion', recruitPending: true });
+    let save = resolveWin(defaultSave(), 'minion2');
+    expect(save).toMatchObject({ bones: 1, allies: 0, encounter: 'boss', recruitPending: false });
+    save = resolveWin(save, 'boss', 0.99);
+    expect(save).toMatchObject({ bones: 2, allies: 0, encounter: 'minion3', recruitPending: true });
 
-    for (let count = 1; count <= 4; count += 1) {
-      expect(keepRecruiting(save)).toBe(true);
-      const next = recruitAlly(save);
-      expect(next?.allies).toBe(count);
-      expect(next?.bones).toBe(4 - count);
-      save = next ?? save;
-    }
+    save = recruitAlly(save) ?? save;
+    expect(save.allies).toBe(1);
+    expect(keepRecruiting(save)).toBe(true);
+    save = recruitAlly(save) ?? save;
+    expect(save).toMatchObject({ allies: 2, bones: 0 });
     expect(keepRecruiting(save)).toBe(false);
+
+    save = resolveWin({ ...save, recruitPending: false }, 'minion');
+    save = resolveWin(save, 'boss', 0);
+    expect(save).toMatchObject({ bones: 2, allies: 2, encounter: 'minion', recruitPending: true });
+    save = recruitAlly(save) ?? save;
+    save = recruitAlly(save) ?? save;
+    expect(save).toMatchObject({ allies: 4, bones: 0 });
     expect(recruitAlly(save)).toBeNull();
-    const capped = resolveWin(save, 'boss');
+    const capped = resolveWin(save, 'boss', 0.5);
     expect(capped.recruitPending).toBe(false);
     expect(capped.allies).toBe(4);
+    expect(capped.encounter).toBe('minion2');
   });
 });
 
@@ -230,9 +239,9 @@ describe('combo', () => {
     expect(result.heroDamage).toBe(0);
     expect(result.battle.hero.multiplier).toBe(2);
     expect(result.allyDamage).toEqual([each, each, each, each]);
-    expect(before - result.battle.enemy.hp).toBe(each * 4);
+    expect(result.battle.enemy.hp).toBe(Math.max(0, before - each * 4));
+    expect(result.battle.outcome).toBe(before <= each * 4 ? 'win' : 'ongoing');
     expect(result.battle.allies.every((ally) => ally.multiplier === 1)).toBe(true);
-    expect(result.battle.outcome).toBe('ongoing');
   });
 });
 
