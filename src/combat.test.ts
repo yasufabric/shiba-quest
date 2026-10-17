@@ -1,10 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import { config, maxFightTurns, minFightTurns } from './config';
-import { defaultSave, keepRecruiting, noteDamage, pickMinion, recruitAlly, resolveWin } from './campaign';
+import { continueAfterBoss, defaultSave, keepRecruiting, noteDamage, pickMinion, recruitAlly, resolveWin } from './campaign';
 import { intentAt, pacePolicy, quadChargeReady, simulate, step } from './combat';
 import { commandMenu } from './menu';
 import { makeBattle } from './setup';
-import { allySprites, crow, toad, type Sprite } from './sprites';
+import { allySprites, crow, heroDown, toad, type Sprite } from './sprites';
 
 const rules = { chargeCap: config.charge.cap };
 
@@ -157,6 +157,7 @@ describe('campaign', () => {
     expect(save).toMatchObject({ bones: 1, allies: 0, encounter: 'boss', recruitPending: false });
     save = resolveWin(save, 'boss', 0.99);
     expect(save).toMatchObject({ bones: 2, allies: 0, encounter: 'minion3', recruitPending: true });
+    expect(continueAfterBoss(save)).toBe('recruit');
 
     save = recruitAlly(save) ?? save;
     expect(save.allies).toBe(1);
@@ -174,6 +175,7 @@ describe('campaign', () => {
     expect(recruitAlly(save)).toBeNull();
     const capped = resolveWin(save, 'boss', 0.5);
     expect(capped.recruitPending).toBe(false);
+    expect(continueAfterBoss(capped)).toBe('fight');
     expect(capped.allies).toBe(4);
     expect(capped.encounter).toBe('minion2');
   });
@@ -249,6 +251,8 @@ describe('sprites', () => {
   it('ships a distinct original sprite for every foe and ally', () => {
     expect(spriteSignature(crow)).not.toBe(spriteSignature(toad));
     expect(allySprites).toHaveLength(config.ally.maxCount);
+    expect(heroDown.rows).toHaveLength(heroDown.h);
+    for (const row of heroDown.rows) expect(row).toHaveLength(heroDown.w);
     const signatures = allySprites.map(spriteSignature);
     expect(new Set(signatures).size).toBe(signatures.length);
     for (const sprite of [crow, toad, ...allySprites]) expectSprite(sprite);
