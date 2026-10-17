@@ -1,9 +1,60 @@
+const MUTE_KEY = 'shiba-quest-mute';
+
 let context: AudioContext | null = null;
+let master: GainNode | null = null;
 let primed = false;
+let muted = false;
+let onPrime: (() => void) | null = null;
 
 function getContext(): AudioContext {
   if (!context) context = new AudioContext();
   return context;
+}
+
+function output(): GainNode {
+  const ctx = getContext();
+  if (!master) {
+    master = ctx.createGain();
+    master.gain.value = muted ? 0 : 0.9;
+    master.connect(ctx.destination);
+  }
+  return master;
+}
+
+export function isMuted(): boolean {
+  return muted;
+}
+
+export function hydrateMute(): boolean {
+  try {
+    muted = localStorage.getItem(MUTE_KEY) === '1';
+  } catch {
+    muted = false;
+  }
+  if (master) master.gain.value = muted ? 0 : 0.9;
+  return muted;
+}
+
+export function setMuted(next: boolean): void {
+  muted = next;
+  try {
+    localStorage.setItem(MUTE_KEY, next ? '1' : '0');
+  } catch {
+    // The toggle still applies for this visit.
+  }
+  if (master) master.gain.value = next ? 0 : 0.9;
+}
+
+export function audioPrimed(): boolean {
+  return primed;
+}
+
+export function audioNow(): number {
+  return getContext().currentTime;
+}
+
+export function onAudioPrime(listener: () => void): void {
+  onPrime = listener;
 }
 
 /** Create or resume the audio context. Call from touchend so iOS will sound. */
@@ -11,13 +62,15 @@ export function unlockAudio(): void {
   try {
     const ctx = getContext();
     if (ctx.state === 'suspended') void ctx.resume();
+    output();
     if (primed) return;
     const buffer = ctx.createBuffer(1, 1, ctx.sampleRate);
     const source = ctx.createBufferSource();
     source.buffer = buffer;
-    source.connect(ctx.destination);
+    source.connect(output());
     source.start();
     primed = true;
+    onPrime?.();
   } catch {
     // The fight still plays with the sound missing.
   }
@@ -82,7 +135,7 @@ function tone(
     gain.gain.exponentialRampToValueAtTime(peak, start + 0.012);
     gain.gain.exponentialRampToValueAtTime(0.0001, start + duration);
     osc.connect(gain);
-    gain.connect(ctx.destination);
+    gain.connect(output());
     osc.start(start);
     osc.stop(start + duration + 0.02);
   } catch {
@@ -90,7 +143,7 @@ function tone(
   }
 }
 
-function noise(duration: number, peak: number, cutoff: number): void {
+function noise(duration: number, peak: number, cutoff: number, delay = 0): void {
   try {
     const ctx = getContext();
     if (ctx.state === 'suspended') void ctx.resume();
@@ -109,9 +162,23 @@ function noise(duration: number, peak: number, cutoff: number): void {
     gain.gain.value = peak;
     source.connect(filter);
     filter.connect(gain);
-    gain.connect(ctx.destination);
-    source.start();
+    gain.connect(output());
+    source.start(ctx.currentTime + delay);
   } catch {
     // Ignore autoplay failures.
   }
+}
+
+export function scheduleTone(
+  freq: number,
+  duration: number,
+  type: OscillatorType,
+  peak: number,
+  delay = 0,
+): void {
+  tone(freq, duration, type, peak, delay);
+}
+
+export function scheduleNoise(duration: number, peak: number, cutoff: number, delay = 0): void {
+  noise(duration, peak, cutoff, delay);
 }

@@ -3,10 +3,11 @@ import { isCampaignId, keepRecruiting, noteDamage, pickMinion, recruitAlly, reso
 import { intentAt, quadChargeReady, step, type Battle } from './combat';
 import { makeBattle } from './setup';
 import { loadSave, writeSave } from './save';
-import { playAttack, playCharge, playGuard, playHit, playShatter, playVictory, unlockAudio } from './audio';
+import { hydrateMute, isMuted, playAttack, playCharge, playGuard, playHit, playShatter, playVictory, setMuted, unlockAudio } from './audio';
 import { battleAnchors, drawScene, VIEW_H, VIEW_W, type FloatNumber, type Fragment, type Pose, type Scene } from './render';
 import { commandMenu } from './menu';
 import { meterLow, meterPercent } from './meters';
+import { bedForTutorial, refreshMusic, requestMusic } from './music';
 import { allySprites, blit, bone as boneSprite, enemySprites, finger, shatterBlocks, type Sprite } from './sprites';
 
 const rules = { chargeCap: config.charge.cap };
@@ -82,11 +83,13 @@ interface Ui {
   recruit: HTMLButtonElement;
   recruitBone: HTMLCanvasElement;
   boneIcon: HTMLCanvasElement;
+  mute: HTMLButtonElement;
 }
 
 export function startGame(): void {
   const ui = bind();
   const state = createState(loadSave());
+  ui.mute.dataset.muted = hydrateMute() ? '1' : '0';
   fit(ui, state);
   paintFinger(ui);
   paintBoneIcon(ui);
@@ -111,6 +114,12 @@ export function startGame(): void {
     unlockAudio();
     state.generation += 1;
     begin(state, ui, state.encounter);
+  });
+  ui.mute.addEventListener('click', () => {
+    unlockAudio();
+    setMuted(!isMuted());
+    ui.mute.dataset.muted = isMuted() ? '1' : '0';
+    refreshMusic();
   });
   ui.recruit.addEventListener('click', () => {
     unlockAudio();
@@ -217,6 +226,7 @@ function begin(state: State, ui: Ui, encounter: EncounterId): void {
   state.bang = intentAt(state.battle) === 'strike';
   state.intro = 1;
   state.phase = 'command';
+  requestMusic(bedForTutorial(encounter === 'tutorial'));
   showModal(ui, null);
   setCommands(ui, state, true);
   hideFinger(ui);
@@ -445,6 +455,7 @@ async function onWin(state: State, ui: Ui, alive: () => boolean): Promise<void> 
   state.save = resolveWin(state.save, defeated, Math.random());
   writeSave(state.save);
   playVictory();
+  requestMusic('ending');
   mark(state, ui);
   await tween(config.juice.boneMs, alive, (t) => {
     state.reward = t;
@@ -740,6 +751,7 @@ function bind(): Ui {
   const recruit = document.querySelector('#recruit');
   const recruitBone = document.querySelector('#recruit-bone');
   const boneIcon = document.querySelector('#bone-icon');
+  const mute = document.querySelector('#mute');
   if (
     !(app instanceof HTMLElement) ||
     !(stage instanceof HTMLElement) ||
@@ -759,7 +771,8 @@ function bind(): Ui {
     !(retry instanceof HTMLButtonElement) ||
     !(recruit instanceof HTMLButtonElement) ||
     !(recruitBone instanceof HTMLCanvasElement) ||
-    !(boneIcon instanceof HTMLCanvasElement)
+    !(boneIcon instanceof HTMLCanvasElement) ||
+    !(mute instanceof HTMLButtonElement)
   ) {
     throw new Error('battle markup is missing');
   }
@@ -788,6 +801,7 @@ function bind(): Ui {
     recruit,
     recruitBone,
     boneIcon,
+    mute,
   };
 }
 
