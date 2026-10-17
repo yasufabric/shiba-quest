@@ -1,6 +1,6 @@
 import { config, type Command, type EncounterId } from './config';
 import { continueAfterBoss, isCampaignId, keepRecruiting, noteDamage, pickMinion, recruitAlly, resolveWin, type SaveData } from './campaign';
-import { intentAt, quadChargeReady, step, type Battle } from './combat';
+import { intentAt, pacePolicy, quadChargeReady, step, type Battle } from './combat';
 import { makeBattle } from './setup';
 import { loadSave, writeSave } from './save';
 import { hydrateMute, isMuted, playAttack, playCharge, playGuard, playHit, playShatter, playVictory, setMuted, unlockAudio } from './audio';
@@ -728,6 +728,7 @@ function setCommands(ui: Ui, state: State, open: boolean): void {
     tutorialStep: state.phase === 'command' ? state.tutorialStep : null,
     comboReady: quadChargeReady(state.save.allies, config.campaign.combo),
     open,
+    suggest: pacePolicy(state.battle, config.charge.cap),
   });
   for (const button of ui.commandButtons) {
     const name = button.dataset.command ?? '';

@@ -11,14 +11,19 @@ export type MenuCommand = 'attack' | 'charge' | 'guard' | 'combo';
 /**
  * First run shows こうげき, ためる, and まもる together.
  * Only the guided command is hot; the other two stay visible and dimmed.
+ * After that, the hand follows the surviving pace instead of sticking on こうげき.
  */
 export function commandMenu(input: {
   tutorialStep: number | null;
   comboReady: boolean;
   open: boolean;
+  /** Free-play hand. Ignored during the tutorial. */
+  suggest?: MenuCommand;
 }): Record<MenuCommand, CommandSlot> {
   const tutorial = input.tutorialStep !== null;
-  const guided: Command | null = tutorial ? (config.tutorial.steps[input.tutorialStep ?? 0] ?? null) : 'attack';
+  const guided: Command | null = tutorial
+    ? (config.tutorial.steps[input.tutorialStep ?? 0] ?? null)
+    : (input.suggest ?? 'charge');
   const commands: readonly MenuCommand[] = ['attack', 'charge', 'guard', 'combo'];
   const slots = {} as Record<MenuCommand, CommandSlot>;
   for (const command of commands) {
@@ -39,7 +44,7 @@ function slotFor(
     return { hidden, disabled: hidden, hot: false };
   }
   if (!open) return { hidden: false, disabled: true, hot: false };
-  if (!tutorial) return { hidden: false, disabled: false, hot: command === 'attack' };
+  if (!tutorial) return { hidden: false, disabled: false, hot: command === guided };
   const hot = command === guided;
   return { hidden: false, disabled: !hot, hot };
 }
