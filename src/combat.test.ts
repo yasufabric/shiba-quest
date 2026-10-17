@@ -224,6 +224,32 @@ describe('tutorial commands', () => {
   });
 });
 
+describe('free-play cursor', () => {
+  it('follows charge or guard on a telegraph instead of sticking on attack', () => {
+    let battle = makeBattle('minion', 0);
+    expect(pacePolicy(battle, rules.chargeCap)).toBe('charge');
+    const charging = commandMenu({ tutorialStep: null, comboReady: false, open: true, suggest: 'charge' });
+    expect(charging.charge.hot).toBe(true);
+    expect(charging.attack.hot).toBe(false);
+    expect(charging.attack.disabled).toBe(false);
+    expect(charging.guard.disabled).toBe(false);
+
+    while (intentAt(battle) !== 'strike') battle = step(battle, 'charge', rules).battle;
+    const threatened = { ...battle, hero: { ...battle.hero, hp: battle.enemy.attack } };
+    expect(pacePolicy(threatened, rules.chargeCap)).toBe('guard');
+    const guarding = commandMenu({ tutorialStep: null, comboReady: false, open: true, suggest: 'guard' });
+    expect(guarding.guard.hot).toBe(true);
+    expect(guarding.attack.hot).toBe(false);
+    expect(guarding.charge.hot).toBe(false);
+
+    const ready = { ...battle, hero: { ...battle.hero, multiplier: rules.chargeCap } };
+    expect(pacePolicy(ready, rules.chargeCap)).toBe('attack');
+    const releasing = commandMenu({ tutorialStep: null, comboReady: false, open: true, suggest: 'attack' });
+    expect(releasing.attack.hot).toBe(true);
+    expect(releasing.charge.hot).toBe(false);
+  });
+});
+
 describe('combo', () => {
   it('charges all four allies and strikes at once for the cap', () => {
     expect(quadChargeReady(4, config.campaign.combo)).toBe(true);
