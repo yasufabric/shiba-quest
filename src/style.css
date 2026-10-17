@@ -226,18 +226,20 @@ button {
 }
 
 #commands {
-  position: absolute;
-  left: 8px;
-  bottom: calc(118px + env(safe-area-inset-bottom));
+  position: static;
+  align-self: flex-start;
+  flex: none;
   z-index: 3;
   width: min(188px, 52vw);
+  margin: 0 0 0 8px;
   display: flex;
   flex-direction: column;
   padding: 4px 2px;
 }
 
 #commands[hidden] {
-  display: none;
+  display: flex;
+  visibility: hidden;
 }
 
 #commands button {
