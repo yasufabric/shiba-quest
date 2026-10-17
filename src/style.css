@@ -348,8 +348,27 @@ button {
 
 #finger {
   position: absolute;
-  z-index: 3;
+  z-index: 4;
   pointer-events: none;
+}
+
+#finger:not([hidden]) {
+  animation: point 0.8s steps(2, end) infinite;
+}
+
+@keyframes point {
+  from {
+    transform: translateY(0);
+  }
+  to {
+    transform: translateY(-4px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  #finger:not([hidden]) {
+    animation: none;
+  }
 }
 
 #finger[hidden] {
