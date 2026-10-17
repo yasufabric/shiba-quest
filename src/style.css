@@ -1,0 +1,236 @@
+:root {
+  color-scheme: dark;
+  --bg: #07090f;
+  --ink: #f4f0e6;
+  --gold: #f0c84a;
+  --frame: #d9d3c5;
+  --night: #12182e;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  height: 100%;
+  background: var(--bg);
+  color: var(--ink);
+  font-family: "Hiragino Sans", "Hiragino Kaku Gothic ProN", "Yu Gothic", "Noto Sans JP", "Droid Sans Fallback", "WenQuanYi Micro Hei", sans-serif;
+}
+
+body {
+  overflow: hidden;
+  touch-action: manipulation;
+}
+
+button {
+  font-family: inherit;
+  touch-action: manipulation;
+}
+
+#app {
+  height: 100dvh;
+  width: min(100vw, 480px);
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  position: relative;
+  background: #080a10;
+  overflow: hidden;
+}
+
+#hud {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 12px 6px;
+  min-height: 62px;
+}
+
+#bars {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  min-width: 0;
+}
+
+.hp {
+  position: relative;
+  height: 18px;
+  background: #2a1418;
+  box-shadow: 0 0 0 3px #070910, 0 0 0 5px var(--frame);
+}
+
+.hp.ally {
+  height: 8px;
+  box-shadow: 0 0 0 2px #070910, 0 0 0 4px var(--frame);
+}
+
+#hp-fill,
+#ally-fill {
+  height: 100%;
+  width: 100%;
+}
+
+#hp-fill {
+  background: linear-gradient(#9be08f, #3d9a46);
+}
+
+#ally-fill {
+  width: 100%;
+  background: #d8d0c2;
+}
+
+#hp-text {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  color: #f7f4ea;
+  text-shadow: 1px 1px 0 #000;
+}
+
+#bone-count {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-weight: 800;
+  font-size: 16px;
+}
+
+#bone-icon,
+#recruit-bone,
+#finger,
+#battle {
+  image-rendering: pixelated;
+  image-rendering: crisp-edges;
+}
+
+#record {
+  min-width: 52px;
+  text-align: right;
+  color: var(--gold);
+  font-weight: 800;
+  font-size: 18px;
+  font-variant-numeric: tabular-nums;
+}
+
+#battle {
+  flex: 1;
+  width: 100%;
+  min-height: 0;
+  display: block;
+}
+
+#commands {
+  margin: 0 10px calc(12px + env(safe-area-inset-bottom));
+  padding: 6px;
+  background: var(--night);
+  box-shadow: 0 0 0 3px #070910, 0 0 0 6px var(--frame);
+  display: flex;
+  flex-direction: column;
+}
+
+#commands button {
+  appearance: none;
+  border: 0;
+  background: transparent;
+  color: var(--ink);
+  font-weight: 800;
+  font-size: 22px;
+  letter-spacing: 0.14em;
+  text-align: left;
+  padding: 14px 16px;
+  min-height: 64px;
+  border-bottom: 2px solid #2a3358;
+}
+
+#commands button:last-child {
+  border-bottom: 0;
+}
+
+#commands button:active:not(:disabled) {
+  background: #24345f;
+}
+
+#commands button:disabled {
+  opacity: 0.35;
+}
+
+#commands button:focus-visible,
+#retry:focus-visible,
+#recruit:focus-visible {
+  outline: 2px solid var(--ink);
+  outline-offset: 2px;
+}
+
+#finger {
+  position: absolute;
+  z-index: 3;
+  pointer-events: none;
+  animation: bob 0.7s ease-in-out infinite;
+}
+
+#finger[hidden] {
+  display: none;
+}
+
+@keyframes bob {
+  0%,
+  100% {
+    transform: translateY(-6px);
+  }
+  50% {
+    transform: translateY(7px);
+  }
+}
+
+#modal {
+  position: absolute;
+  inset: 0;
+  z-index: 4;
+  display: grid;
+  place-items: center;
+  background: rgba(0, 0, 0, 0.55);
+}
+
+#modal[hidden] {
+  display: none;
+}
+
+#retry {
+  appearance: none;
+  border: 0;
+  background: var(--night);
+  color: var(--ink);
+  font-weight: 800;
+  font-size: 28px;
+  letter-spacing: 0.12em;
+  padding: 22px 28px;
+  box-shadow: 0 0 0 4px #070910, 0 0 0 8px var(--frame);
+}
+
+#recruit {
+  appearance: none;
+  border: 0;
+  background: transparent;
+  padding: 0;
+  animation: pulse 0.9s ease-in-out infinite;
+}
+
+#retry[hidden],
+#recruit[hidden] {
+  display: none;
+}
+
+@keyframes pulse {
+  50% {
+    transform: scale(1.06);
+  }
+}
