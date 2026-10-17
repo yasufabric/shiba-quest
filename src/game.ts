@@ -510,16 +510,18 @@ async function onWin(state: State, ui: Ui, alive: () => boolean): Promise<void> 
     state.reward = t;
   });
   if (!alive()) return;
-  state.reward = 0;
   if (defeated === config.campaign.boss) {
+    state.reward = 0;
     enterEnding(state, ui);
     await wait(720);
     if (!alive() || !isEnding(state)) return;
     requestMusic('title');
     return;
   }
+  state.reward = 1;
   await wait(config.juice.victoryHoldMs);
   if (!alive()) return;
+  state.reward = 0;
   begin(state, ui, state.save.encounter);
 }
 
