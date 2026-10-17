@@ -4,7 +4,7 @@ import { continueAfterBoss, defaultSave, keepRecruiting, noteDamage, pickMinion,
 import { intentAt, pacePolicy, quadChargeReady, simulate, step } from './combat';
 import { commandMenu, fingerHint } from './menu';
 import { makeBattle } from './setup';
-import { allySprites, crow, heroDown, toad, type Sprite } from './sprites';
+import { allySprites, crow, hero, heroDown, heroGuard, toad, type Sprite } from './sprites';
 
 const rules = { chargeCap: config.charge.cap };
 
@@ -286,6 +286,10 @@ describe('sprites', () => {
     expect(allySprites).toHaveLength(config.ally.maxCount);
     expect(heroDown.rows).toHaveLength(heroDown.h);
     for (const row of heroDown.rows) expect(row).toHaveLength(heroDown.w);
+    expectSprite(heroGuard);
+    expect(spriteSignature(heroGuard)).not.toBe(spriteSignature(hero));
+    const guardTop = heroGuard.rows.slice(0, 8).join('');
+    expect(guardTop).not.toMatch(/[a-z0-9]/);
     const signatures = allySprites.map(spriteSignature);
     expect(new Set(signatures).size).toBe(signatures.length);
     for (const sprite of [crow, toad, ...allySprites]) expectSprite(sprite);

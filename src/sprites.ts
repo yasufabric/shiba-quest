@@ -232,6 +232,42 @@ export const heroWin: Sprite = {
   ],
 };
 
+/** Braced on the path. Same baseline as the standing sprite, body ducked. */
+export const heroGuard: Sprite = {
+  w: 24,
+  h: 28,
+  rows: [
+    '........................',
+    '........................',
+    '........................',
+    '........................',
+    '........................',
+    '........................',
+    '........................',
+    '........................',
+    '........................',
+    '.............kk.........',
+    '............kook........',
+    '...........koolok.......',
+    '..........koollok.......',
+    '.........kowwllok.......',
+    '........kwwsssplok......',
+    '.......kwwwooookkk......',
+    '......kooooookk.kdk.....',
+    '.....kooooook...kok.....',
+    '....kooooook....kdk.....',
+    '...koooookk.....ksk.....',
+    '..kkkkkkk........k......',
+    '.kk....kk...............',
+    'kdk....kdk..............',
+    'kok....kok..............',
+    'kdk....kdk..............',
+    'ksk....ksk..............',
+    '.k......k...............',
+    '........................',
+  ],
+};
+
 /** Lying on the path after a loss. Feet stay on the same baseline as the standing sprite. */
 export const heroDown: Sprite = {
   w: 32,
