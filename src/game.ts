@@ -6,6 +6,7 @@ import { loadSave, writeSave } from './save';
 import { playAttack, playCharge, playGuard, playHit, playShatter, playVictory, unlockAudio } from './audio';
 import { battleAnchors, drawScene, VIEW_H, VIEW_W, type FloatNumber, type Fragment, type Pose, type Scene } from './render';
 import { commandMenu } from './menu';
+import { meterLow, meterPercent } from './meters';
 import { allySprites, blit, bone as boneSprite, enemySprites, finger, shatterBlocks, type Sprite } from './sprites';
 
 const rules = { chargeCap: config.charge.cap };
@@ -70,6 +71,7 @@ interface Ui {
   enemyName: HTMLElement;
   hpFill: HTMLElement;
   hpText: HTMLElement;
+  enemyFill: HTMLElement;
   charge: HTMLElement;
   roster: HTMLElement;
   bones: HTMLElement;
@@ -580,10 +582,11 @@ function toScene(state: State): Scene {
 
 function syncHud(state: State, ui: Ui): void {
   const hp = Math.max(0, Math.round(state.shownHeroHp));
-  const step = chargeStep(state.battle.hero.multiplier);
-  const atb = [18, 38, 58, 78, 100][step] ?? 18;
-  ui.hpFill.style.width = `${atb}%`;
+  const enemyHp = Math.max(0, Math.round(state.shownEnemyHp));
+  ui.hpFill.style.width = `${meterPercent(hp, config.hero.maxHp)}%`;
+  ui.hpFill.classList.toggle('low', meterLow(hp, config.hero.maxHp));
   ui.hpText.textContent = `${hp}/${config.hero.maxHp}`;
+  ui.enemyFill.style.width = `${meterPercent(enemyHp, config.encounters[state.encounter].hp)}%`;
   ui.charge.textContent = state.battle.hero.multiplier > 1 ? `x${state.battle.hero.multiplier}` : '';
   ui.enemyName.textContent = config.encounters[state.encounter].name;
   const shownAllies = state.encounter === 'tutorial' ? 0 : state.save.allies;
@@ -727,6 +730,7 @@ function bind(): Ui {
   const charge = document.querySelector('#charge');
   const hpFill = document.querySelector('#hp-fill');
   const hpText = document.querySelector('#hp-text');
+  const enemyFill = document.querySelector('#enemy-fill');
   const roster = document.querySelector('#roster');
   const bones = document.querySelector('#bones');
   const record = document.querySelector('#record');
@@ -746,6 +750,7 @@ function bind(): Ui {
     !(charge instanceof HTMLElement) ||
     !(hpFill instanceof HTMLElement) ||
     !(hpText instanceof HTMLElement) ||
+    !(enemyFill instanceof HTMLElement) ||
     !(roster instanceof HTMLElement) ||
     !(bones instanceof HTMLElement) ||
     !(record instanceof HTMLElement) ||
@@ -773,6 +778,7 @@ function bind(): Ui {
     charge,
     hpFill,
     hpText,
+    enemyFill,
     roster,
     bones,
     record,

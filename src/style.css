@@ -152,8 +152,16 @@ button {
 .atb i {
   display: block;
   height: 100%;
-  width: 18%;
+  width: 0;
   background: linear-gradient(#f4f0c0, #78b85a);
+}
+
+#hp-fill.low {
+  background: linear-gradient(#f4c0a8, #c44848);
+}
+
+#enemy-fill {
+  background: linear-gradient(#f0d070, #c44838);
 }
 
 #roster {
