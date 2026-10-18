@@ -1,7 +1,17 @@
 import { config, type Command, type EncounterId } from './config';
 import { acceptRecruit, continueAfterBoss, isCampaignId, keepRecruiting, noteDamage, pickMinion, resolveWin, type SaveData } from './campaign';
-import { intentAt, pacePolicy, quadChargeReady, step, type Battle } from './combat';
-import { makeBattle } from './setup';
+import { quadChargeReady } from './combat';
+import {
+  act,
+  enemyReady,
+  fillGauges,
+  makeEncounter,
+  resolveEnemy,
+  suggestCommand,
+  telegraph,
+  type AtbBattle,
+  type AtbRules,
+} from './atb';
 import { loadSave, writeSave } from './save';
 import { hydrateMute, isMuted, playAttack, playCharge, playGuard, playHit, playShatter, playVictory, setMuted, unlockAudio } from './audio';
 import { battleAnchors, drawScene, fieldCover, VIEW_H, VIEW_W, type FloatNumber, type Fragment, type Pose, type Scene } from './render';
@@ -11,7 +21,7 @@ import { bedForTutorial, refreshMusic, requestMusic } from './music';
 import { enemyFrames } from './dogs';
 import { allySprites, blit, bone as boneSprite, finger, shatterBlocks, type Sprite } from './sprites';
 
-const rules = { chargeCap: config.charge.cap };
+const rules: AtbRules = { chargeCap: config.charge.cap, telegraphAt: config.atb.telegraphAt };
 
 interface Shard extends Fragment {
   vx: number;
@@ -24,11 +34,15 @@ interface Popup extends FloatNumber {
   floor: number;
 }
 
-type Phase = 'title' | 'command' | 'resolving' | 'shatter' | 'reward' | 'ending' | 'recruit' | 'defeat';
+type Phase = 'title' | 'live' | 'command' | 'resolving' | 'shatter' | 'reward' | 'ending' | 'recruit' | 'defeat';
 
 interface State {
   save: SaveData;
-  battle: Battle;
+  battle: AtbBattle;
+  /** Party index playing the current lunge. */
+  actor: number;
+  /** An animation is playing. Gauges wait, and a tap cannot start a second action. */
+  busy: boolean;
   encounter: EncounterId;
   tutorialStep: number | null;
   phase: Phase;
@@ -161,7 +175,7 @@ export function startGame(): void {
 
   const onResize = () => {
     fit(ui, state);
-    if (state.phase === 'command') setCommands(ui, state, true);
+    if (state.phase === 'command' || state.phase === 'live') syncCommands(ui, state);
   };
   void document.fonts.ready.then(onResize);
   window.addEventListener('resize', onResize);
@@ -173,6 +187,7 @@ export function startGame(): void {
     last = now;
     state.time = now / 1000;
     advance(state, dt);
+    tickBattle(state, ui, dt);
     fit(ui, state);
     drawScene(ui.ctx, toScene(state));
     syncHud(state, ui);
@@ -182,15 +197,17 @@ export function startGame(): void {
 }
 
 function createState(save: SaveData): State {
-  const battle = makeBattle('tutorial', 0);
+  const battle = makeEncounter('tutorial', 0);
   return {
     save,
     battle,
+    actor: 0,
+    busy: false,
     encounter: 'tutorial',
     tutorialStep: null,
     phase: 'command',
     generation: 0,
-    shownHeroHp: battle.hero.hp,
+    shownHeroHp: battle.party[0]?.hp ?? config.hero.maxHp,
     shownEnemyHp: battle.enemy.hp,
     scale: 1,
     glow: 0,
@@ -222,10 +239,13 @@ function createState(save: SaveData): State {
 }
 
 function begin(state: State, ui: Ui, encounter: EncounterId): void {
+  state.generation += 1;
   const allies = encounter === 'tutorial' ? 0 : state.save.allies;
   state.encounter = encounter;
-  state.battle = makeBattle(encounter, allies);
-  state.shownHeroHp = state.battle.hero.hp;
+  state.battle = makeEncounter(encounter, allies);
+  state.actor = 0;
+  state.busy = false;
+  state.shownHeroHp = state.battle.party[0]?.hp ?? config.hero.maxHp;
   state.shownEnemyHp = state.battle.enemy.hp;
   state.tutorialStep = encounter === 'tutorial' ? 0 : null;
   state.scale = 1;
@@ -249,12 +269,12 @@ function begin(state: State, ui: Ui, encounter: EncounterId): void {
   state.reward = 0;
   state.allyHits = 0;
   state.summon = 0;
-  state.bang = intentAt(state.battle) === 'strike';
+  state.bang = false;
   state.intro = 1;
-  state.phase = 'command';
+  state.phase = encounter === 'tutorial' ? 'command' : 'live';
   requestMusic(bedForTutorial(encounter === 'tutorial'));
   showModal(ui, null);
-  setCommands(ui, state, true);
+  syncCommands(ui, state);
   mark(state, ui);
   fit(ui, state);
 }
@@ -264,7 +284,7 @@ function showTitle(state: State, ui: Ui): void {
   state.enemyVisible = false;
   state.bang = false;
   state.pose = 'idle';
-  setCommands(ui, state, false);
+  syncCommands(ui, state);
   showModal(ui, null);
   requestMusic(null);
   mark(state, ui);
@@ -279,7 +299,7 @@ function enterEnding(state: State, ui: Ui): void {
   state.enemyVisible = false;
   state.bang = false;
   state.pose = 'idle';
-  setCommands(ui, state, false);
+  syncCommands(ui, state);
   showModal(ui, null);
   mark(state, ui);
 }
@@ -289,67 +309,83 @@ function openRecruit(state: State, ui: Ui): void {
   state.enemyVisible = false;
   state.bang = false;
   state.pose = 'idle';
-  setCommands(ui, state, false);
+  syncCommands(ui, state);
   showModal(ui, 'recruit');
   paintRecruit(ui, state.save.allies);
   mark(state, ui);
 }
 
 function onCommand(state: State, ui: Ui, command: Command): void {
-  if (state.phase !== 'command') return;
+  if (state.busy || state.phase !== 'command') return;
+  if (state.battle.acting === null) return;
+  if (enemyReady(state.battle)) {
+    void runEnemy(state, ui);
+    return;
+  }
   if (state.tutorialStep !== null) {
     const expected = config.tutorial.steps[state.tutorialStep];
     if (command !== expected) return;
   }
-  void runTurn(state, ui, command);
+  void runCommand(state, ui, command);
 }
 
-async function runTurn(state: State, ui: Ui, command: Command): Promise<void> {
+async function runCommand(state: State, ui: Ui, command: Command): Promise<void> {
   const generation = ++state.generation;
   const alive = () => generation === state.generation;
+  const actor = state.battle.acting ?? 0;
+  state.actor = actor;
+  state.busy = true;
   state.phase = 'resolving';
-  setCommands(ui, state, false);
+  syncCommands(ui, state);
   mark(state, ui);
 
   const scripted =
     state.tutorialStep !== null &&
     command === 'attack' &&
     state.tutorialStep === config.tutorial.steps.length - 1;
-  const result = step(state.battle, command, rules, scripted ? { forceDamage: config.tutorial.damage } : undefined);
+  const result = act(state.battle, command, rules, scripted ? config.tutorial.damage : undefined);
+  state.battle = { ...result.battle, pause: 0 };
+  const acted = result.battle.party[actor];
 
   switch (command) {
     case 'charge': {
       playCharge();
-      const index = chargeStep(result.battle.hero.multiplier);
-      state.targetScale = config.charge.scales[index] ?? 1;
-      state.targetGlow = config.charge.glows[index] ?? 0;
-      await wait(config.juice.chargeMs);
+      if (actor === 0 && acted) {
+        const index = chargeStep(acted.multiplier);
+        state.targetScale = config.charge.scales[index] ?? 1;
+        state.targetGlow = config.charge.glows[index] ?? 0;
+      }
+      await wait(config.atb.anim.charge * 1000);
       break;
     }
     case 'attack': {
       playAttack();
       let impacted = false;
-      await tween(config.juice.lungeMs, alive, (t) => {
-        state.pose = 'lunge';
-        state.heroOx = -22 * Math.sin(t * Math.PI);
+      const attackMs = config.atb.anim.attack * 1000;
+      await tween(attackMs * 0.62, alive, (t) => {
+        holdPose(state, actor, 'lunge');
+        const lean = -14 * Math.sin(t * Math.PI);
+        if (actor === 0) state.heroOx = lean;
+        else state.allyOx = lean;
         if (impacted || t < 0.42) return;
         impacted = true;
-        connectHeroHit(state, result.heroDamage, scripted);
-        if (!scripted) {
+        connectHeroHit(state, result.damage, scripted);
+        if (!scripted && actor === 0) {
           state.targetScale = config.charge.scales[0] ?? 1;
           state.targetGlow = config.charge.glows[0] ?? 0;
         }
       });
-      if (!scripted) state.pose = 'idle';
       state.heroOx = 0;
+      state.allyOx = 0;
+      if (!scripted) holdPose(state, actor, 'idle');
       if (!alive()) return;
-      await wait(config.juice.hitStopMs);
+      await wait(attackMs * 0.38);
       break;
     }
     case 'guard': {
       playGuard();
-      state.pose = 'guard';
-      await wait(config.juice.guardMs);
+      holdPose(state, actor, 'guard');
+      await wait(config.atb.anim.guard * 1000);
       break;
     }
     case 'combo': {
@@ -365,15 +401,14 @@ async function runTurn(state: State, ui: Ui, command: Command): Promise<void> {
         state.allyPose = 'lunge';
         if (impacted || t < 0.42) return;
         impacted = true;
-        const total = result.allyDamage.reduce((sum, hit) => sum + hit, 0);
-        spawnNumber(state, total, 0.44, 0.36, true);
+        spawnNumber(state, result.damage, 0.44, 0.36, true);
         state.shownEnemyHp = result.battle.enemy.hp;
         if (state.shownEnemyHp <= 0) state.enemyPose = 'down';
         state.enemyFlash = 1;
         state.shake = config.juice.shakeHeavy;
         state.flash = 0.35;
         playHit();
-        remember(state, total, false);
+        remember(state, result.damage, false);
       });
       if (!alive()) return;
       await wait(700);
@@ -388,62 +423,11 @@ async function runTurn(state: State, ui: Ui, command: Command): Promise<void> {
   }
   if (!alive()) return;
 
-  if (command !== 'combo' && state.shownEnemyHp > 0) {
-    for (const damage of result.allyDamage) {
-      if (damage <= 0 || state.shownEnemyHp <= 0) continue;
-      let impacted = false;
-      await tween(config.juice.allyMs, alive, (t) => {
-        state.allyPose = 'lunge';
-        state.allyOx = -14 * Math.sin(t * Math.PI);
-        if (impacted || t < 0.45) return;
-        impacted = true;
-        state.allyHits += 1;
-        spawnNumber(state, damage, 0.5, 0.36, false);
-        state.shownEnemyHp = Math.max(0, state.shownEnemyHp - damage);
-        if (state.shownEnemyHp <= 0) state.enemyPose = 'down';
-        state.enemyFlash = 1;
-        playHit();
-        remember(state, damage, false);
-      });
-      state.allyPose = 'idle';
-      state.allyOx = 0;
-      if (!alive()) return;
-    }
-  }
-
-  if (result.battle.outcome !== 'win' && result.intent === 'strike') {
-    let impacted = false;
-    state.enemyPose = 'lunge';
-    await tween(config.juice.strikeMs, alive, (t) => {
-      state.enemyOx = 16 * Math.sin(t * Math.PI);
-      state.enemyOy = 4 * Math.sin(t * Math.PI);
-      if (impacted || t < 0.48) return;
-      impacted = true;
-      spawnNumber(state, result.enemyDamage, 0.66, 0.7, false);
-      state.shownHeroHp = result.battle.hero.hp;
-      if (result.guarded) playGuard();
-      else {
-        state.heroFlash = 1;
-        playHit();
-      }
-    });
-    state.enemyOx = 0;
-    state.enemyOy = 0;
-    state.enemyPose = state.shownEnemyHp <= 0 ? 'down' : 'idle';
-    state.pose = 'idle';
-  } else {
-    state.pose = 'idle';
-    if (state.shownEnemyHp <= 0) state.enemyPose = 'down';
-  }
-  if (!alive()) return;
-
-  state.battle = result.battle;
-  state.shownHeroHp = result.battle.hero.hp;
   state.shownEnemyHp = result.battle.enemy.hp;
-  state.bang = state.battle.outcome === 'ongoing' && intentAt(state.battle) === 'strike';
+  if (state.shownEnemyHp <= 0) state.enemyPose = 'down';
 
   if (scripted) {
-    await wait(config.juice.shatterMs);
+    await wait(config.atb.anim.shatter * 1000);
     if (!alive()) return;
     state.numbers = [];
     state.shards = [];
@@ -454,41 +438,122 @@ async function runTurn(state: State, ui: Ui, command: Command): Promise<void> {
     return;
   }
 
-  if (state.battle.outcome === 'win') {
+  if (result.battle.outcome === 'win') {
+    state.busy = false;
     await onWin(state, ui, alive);
-    return;
-  }
-  if (state.battle.outcome === 'lose') {
-    state.phase = 'defeat';
-    state.pose = 'down';
-    showModal(ui, 'retry');
-    mark(state, ui);
     return;
   }
 
   if (state.tutorialStep !== null) {
     state.tutorialStep += 1;
     const next = config.tutorial.steps[state.tutorialStep];
-    state.phase = 'command';
     if (!next) state.tutorialStep = null;
-    setCommands(ui, state, true);
+  }
+  resume(state, ui);
+}
+
+async function runEnemy(state: State, ui: Ui): Promise<void> {
+  const generation = ++state.generation;
+  const alive = () => generation === state.generation;
+  state.busy = true;
+  const result = resolveEnemy(state.battle);
+  state.battle = { ...result.battle, pause: 0 };
+  state.bang = false;
+  syncCommands(ui, state);
+  if (result.intent === 'strike') {
+    let impacted = false;
+    state.enemyPose = 'lunge';
+    await tween(config.atb.anim.strike * 1000, alive, (t) => {
+      state.enemyOx = 10 * Math.sin(t * Math.PI);
+      state.enemyOy = 2 * Math.sin(t * Math.PI);
+      if (impacted || t < 0.48) return;
+      impacted = true;
+      spawnNumber(state, result.damage, 0.66, 0.7, false);
+      state.shownHeroHp = result.battle.party[0]?.hp ?? 0;
+      if (result.guarded) playGuard();
+      else {
+        state.heroFlash = 1;
+        playHit();
+      }
+    });
+    state.enemyOx = 0;
+    state.enemyOy = 0;
+  } else {
+    state.enemyPose = 'guard';
+    await wait(config.atb.anim.windup * 1000);
+  }
+  if (!alive()) return;
+  state.enemyPose = state.shownEnemyHp <= 0 ? 'down' : 'idle';
+  if (result.battle.outcome === 'lose') {
+    state.busy = false;
+    state.phase = 'defeat';
+    state.pose = 'down';
+    state.shownHeroHp = 0;
+    showModal(ui, 'retry');
+    syncCommands(ui, state);
     mark(state, ui);
     return;
   }
+  resume(state, ui);
+}
 
-  state.phase = 'command';
-  setCommands(ui, state, true);
+/** Fill gauges. The enemy can finish a bar while a command window is open. */
+function tickBattle(state: State, ui: Ui, dt: number): void {
+  if (state.busy || (state.phase !== 'live' && state.phase !== 'command')) return;
+  state.battle = fillGauges(state.battle, dt);
+  state.bang = telegraph(state.battle, rules.telegraphAt);
+  const hero = state.battle.party[0];
+  if (hero?.guarding && state.pose !== 'down') state.pose = 'guard';
+  else if (state.pose === 'guard' && !hero?.guarding) state.pose = 'idle';
+  if (enemyReady(state.battle)) {
+    void runEnemy(state, ui);
+    return;
+  }
+  if (state.battle.acting !== null && state.phase === 'live') state.phase = 'command';
+  syncCommands(ui, state);
+}
+
+function resume(state: State, ui: Ui): void {
+  state.busy = false;
+  state.heroOx = 0;
+  state.allyOx = 0;
+  const hero = state.battle.party[0];
+  if (state.pose !== 'down') state.pose = hero?.guarding ? 'guard' : 'idle';
+  state.allyPose = state.battle.party.slice(1).some((member) => member.guarding) ? 'guard' : 'idle';
+  state.bang = telegraph(state.battle, rules.telegraphAt);
+  if (state.tutorialStep !== null) {
+    state.phase = 'command';
+  } else {
+    state.phase = state.battle.acting !== null ? 'command' : 'live';
+  }
+  syncCommands(ui, state);
   mark(state, ui);
+}
+
+function holdPose(state: State, actor: number, pose: Pose): void {
+  state.actor = actor;
+  if (actor === 0) state.pose = pose;
+  else state.allyPose = pose;
+}
+
+function allyPose(state: State, index: number): Pose {
+  if (state.summon > 0.2) return 'lunge';
+  const member = state.battle.party[index + 1];
+  if (state.actor === index + 1 && state.allyPose === 'lunge') return 'lunge';
+  if (member?.guarding) return 'guard';
+  if (state.actor === index + 1) return state.allyPose;
+  return 'idle';
 }
 
 function connectHeroHit(state: State, damage: number, scripted: boolean): void {
   spawnNumber(state, damage, scripted ? 0.5 : 0.46, scripted ? 0.55 : 0.4, scripted);
-  state.shownEnemyHp = Math.max(0, state.battle.enemy.hp - damage);
+  state.shownEnemyHp = state.battle.enemy.hp;
   if (state.shownEnemyHp <= 0) state.enemyPose = 'down';
   state.enemyFlash = 1;
   remember(state, damage, scripted);
   if (!scripted) {
-    state.shake = damage >= state.battle.hero.attack * 8 ? config.juice.shakeHeavy : config.juice.shakeLight;
+    const attack = state.battle.party[0]?.attack ?? config.hero.attack;
+    state.shake = damage >= attack * 8 ? config.juice.shakeHeavy : config.juice.shakeLight;
     state.flash = 0.55;
     playHit();
     return;
@@ -507,7 +572,7 @@ async function onWin(state: State, ui: Ui, alive: () => boolean): Promise<void> 
   if (!isCampaign(state.encounter)) return;
   const defeated = state.encounter;
   state.phase = 'reward';
-  setCommands(ui, state, false);
+  syncCommands(ui, state);
   state.save = resolveWin(state.save, defeated, Math.random());
   writeSave(state.save);
   playVictory();
@@ -644,12 +709,15 @@ function toScene(state: State): Scene {
     allies: place.allies.slice(0, allyCount).map((slot, index) => ({
       x: slot.x + (state.summon > 0 ? 0 : state.allyOx),
       y: slot.y,
-      pose: state.allyPose,
+      pose: allyPose(state, index),
       index,
     })),
     summon: state.summon,
     curtain: state.phase === 'title' ? 'title' : state.phase === 'ending' ? 'ending' : null,
     recruitAlly: state.phase === 'recruit' ? state.save.allies : null,
+    partyGauges: state.battle.party.map((member) => member.gauge),
+    enemyGauge: state.battle.enemy.gauge,
+    acting: state.battle.acting,
     bang: state.bang && state.enemyVisible,
     numbers: state.numbers,
     fragments: state.shards,
@@ -664,7 +732,8 @@ function syncHud(state: State, ui: Ui): void {
   ui.hpFill.classList.toggle('low', meterLow(hp, config.hero.maxHp));
   ui.hpText.textContent = `${hp}/${config.hero.maxHp}`;
   ui.enemyFill.style.width = `${meterPercent(enemyHp, config.encounters[state.encounter].hp)}%`;
-  ui.charge.textContent = state.battle.hero.multiplier > 1 ? `x${state.battle.hero.multiplier}` : '';
+  const actor = state.battle.party[state.battle.acting ?? 0];
+  ui.charge.textContent = actor && actor.multiplier > 1 ? `x${actor.multiplier}` : '';
   ui.enemyName.textContent = config.encounters[state.encounter].name;
   const shownAllies = state.encounter === 'tutorial' ? 0 : state.save.allies;
   syncRoster(ui, shownAllies);
@@ -709,7 +778,12 @@ function mark(state: State, ui: Ui): void {
   ui.app.dataset.allyHits = String(state.allyHits);
   ui.app.dataset.heroHp = String(Math.round(state.shownHeroHp));
   ui.app.dataset.enemyHp = String(Math.max(0, Math.round(state.shownEnemyHp)));
-  ui.app.dataset.multiplier = String(state.battle.hero.multiplier);
+  const shownActor = state.battle.party[state.battle.acting ?? 0];
+  ui.app.dataset.multiplier = String(shownActor?.multiplier ?? 1);
+  ui.app.dataset.heroGauge = String(Math.round((state.battle.party[0]?.gauge ?? 0) * 100));
+  ui.app.dataset.enemyGauge = String(Math.round(state.battle.enemy.gauge * 100));
+  ui.app.dataset.acting = state.battle.acting === null ? '' : String(state.battle.acting);
+  ui.app.dataset.party = String(state.battle.party.length);
   ui.app.dataset.summon = state.summon > 0.8 ? '1' : '0';
   ui.app.dataset.pose = state.pose;
   ui.curtain.hidden = state.phase !== 'title' && state.phase !== 'ending';
@@ -730,13 +804,18 @@ function fit(ui: Ui, state: State): void {
   ui.ctx.imageSmoothingEnabled = false;
 }
 
-function setCommands(ui: Ui, state: State, open: boolean): void {
-  ui.commands.hidden = !open;
+function syncCommands(ui: Ui, state: State): void {
+  const fighting = state.phase === 'live' || state.phase === 'command';
+  const tutorial = fighting && state.tutorialStep !== null;
+  const choosing = state.phase === 'command' && state.battle.acting !== null;
+  const visible = choosing || tutorial;
+  const open = choosing && !state.busy;
+  ui.commands.hidden = !visible;
   const menu = commandMenu({
-    tutorialStep: state.phase === 'command' ? state.tutorialStep : null,
+    tutorialStep: tutorial ? state.tutorialStep : null,
     comboReady: quadChargeReady(state.save.allies, config.campaign.combo),
     open,
-    suggest: pacePolicy(state.battle, config.charge.cap),
+    suggest: suggestCommand(state.battle, rules),
   });
   for (const button of ui.commandButtons) {
     const name = button.dataset.command ?? '';

@@ -1,73 +1,134 @@
 import { describe, expect, it } from 'vitest';
-import { config, maxFightTurns, minFightTurns } from './config';
+import { config } from './config';
 import { acceptRecruit, continueAfterBoss, defaultSave, keepRecruiting, noteDamage, pickMinion, recruitAlly, resolveWin } from './campaign';
-import { intentAt, pacePolicy, quadChargeReady, simulate, step } from './combat';
+import { quadChargeReady } from './combat';
+import {
+  act,
+  enemyIntent,
+  enemyReady,
+  fillGauges,
+  hesitantProfile,
+  makeEncounter,
+  promptProfile,
+  resolveEnemy,
+  simulateSession,
+  suggestCommand,
+  telegraph,
+  tutorialSeconds,
+  type AtbBattle,
+  type AtbRules,
+} from './atb';
 import { commandMenu, fingerHint } from './menu';
-import { makeBattle } from './setup';
 import { akitaSprite, allySprites, chihuahuaSprite, corgiSprite, dachshundSprite, hero, heroDown, heroGuard, pugSprite, type Sprite } from './sprites';
 
-const rules = { chargeCap: config.charge.cap };
+const rules: AtbRules = { chargeCap: config.charge.cap, telegraphAt: config.atb.telegraphAt };
+
+function openWindow(battle: AtbBattle, index = 0): AtbBattle {
+  return {
+    ...battle,
+    acting: index,
+    queue: [],
+    party: battle.party.map((member, memberIndex) => (memberIndex === index ? { ...member, gauge: 1 } : member)),
+  };
+}
 
 describe('charge', () => {
   it('doubles through x16 and then stays there', () => {
-    let battle = makeBattle('minion', 0);
+    let battle = openWindow(makeEncounter('minion', 0));
     const seen: number[] = [];
     for (let i = 0; i < 5; i += 1) {
-      const result = step(battle, 'charge', rules);
-      battle = result.battle;
-      seen.push(battle.hero.multiplier);
+      battle = openWindow(act(battle, 'charge', rules).battle);
+      seen.push(battle.party[0]?.multiplier);
     }
     expect(seen).toEqual([2, 4, 8, 16, 16]);
-    expect(battle.hero.multiplier).toBe(16);
   });
 
   it('resets to x1 when the hero attacks', () => {
-    let battle = makeBattle('minion', 0);
-    battle = step(battle, 'charge', rules).battle;
-    battle = step(battle, 'charge', rules).battle;
-    const result = step(battle, 'attack', rules);
-    expect(result.heroDamage).toBe(config.hero.attack * 4);
-    expect(result.battle.hero.multiplier).toBe(1);
+    let battle = openWindow(makeEncounter('minion', 0));
+    battle = openWindow(act(battle, 'charge', rules).battle);
+    battle = openWindow(act(battle, 'charge', rules).battle);
+    const result = act(battle, 'attack', rules);
+    expect(result.damage).toBe(config.hero.attack * 4);
+    expect(result.battle.party[0]?.multiplier).toBe(1);
+  });
+});
+
+describe('atb', () => {
+  it('opens the command window when a gauge fills', () => {
+    let battle = makeEncounter('minion', 0);
+    battle = fillGauges(battle, config.atb.heroFill - 0.05);
+    expect(battle.acting).toBeNull();
+    battle = fillGauges(battle, 0.1);
+    expect(battle.acting).toBe(0);
+    expect(battle.party[0]?.gauge).toBe(1);
+  });
+
+  it('lets the enemy finish its gauge while the window is open', () => {
+    let battle = makeEncounter('boss', 0);
+    while (enemyIntent(battle) !== 'strike') {
+      battle = resolveEnemy({ ...battle, enemy: { ...battle.enemy, gauge: 1 } }).battle;
+    }
+    battle = openWindow(battle);
+    battle = { ...battle, pause: 0, enemy: { ...battle.enemy, gauge: 0 } };
+    battle = fillGauges(battle, config.atb.enemyFill.boss);
+    expect(battle.acting).toBe(0);
+    expect(enemyReady(battle)).toBe(true);
+    const hit = resolveEnemy(battle);
+    expect(hit.intent).toBe('strike');
+    expect(hit.damage).toBe(config.encounters.boss.attack);
+    expect(hit.battle.party[0]?.hp).toBe(config.hero.maxHp - config.encounters.boss.attack);
+  });
+
+  it('keeps the tutorial foe from acting', () => {
+    let battle = makeEncounter('tutorial', 0);
+    battle = fillGauges(battle, 30);
+    expect(battle.enemy.speed).toBe(0);
+    expect(enemyReady(battle)).toBe(false);
+    expect(battle.party[0]?.gauge).toBe(1);
   });
 });
 
 describe('guard', () => {
   it('zeros a telegraphed hit and leaves charge intact', () => {
-    let battle = makeBattle('minion', 0);
-    battle = step(battle, 'charge', rules).battle;
-    while (intentAt(battle) !== 'strike') {
-      battle = step(battle, 'charge', rules).battle;
+    let battle = openWindow(makeEncounter('minion', 0));
+    battle = openWindow(act(battle, 'charge', rules).battle);
+    while (enemyIntent(battle) !== 'strike') {
+      battle = resolveEnemy({ ...battle, enemy: { ...battle.enemy, gauge: 1 } }).battle;
     }
-    const hp = battle.hero.hp;
-    const multiplier = battle.hero.multiplier;
-    const result = step(battle, 'guard', rules);
+    const hp = battle.party[0]?.hp;
+    const multiplier = battle.party[0]?.multiplier;
+    battle = openWindow(act(openWindow(battle), 'guard', rules).battle);
+    expect(battle.party[0]?.guarding).toBe(true);
+    const result = resolveEnemy({ ...battle, enemy: { ...battle.enemy, gauge: 1 } });
     expect(result.intent).toBe('strike');
     expect(result.guarded).toBe(true);
-    expect(result.enemyDamage).toBe(0);
-    expect(result.battle.hero.hp).toBe(hp);
-    expect(result.battle.hero.multiplier).toBe(multiplier);
+    expect(result.damage).toBe(0);
+    expect(result.battle.party[0]?.hp).toBe(hp);
+    expect(result.battle.party[0]?.multiplier).toBe(multiplier);
   });
 
   it('lets an unguarded telegraph deal the enemy attack', () => {
-    let battle = makeBattle('boss', 0);
-    while (intentAt(battle) !== 'strike') {
-      battle = step(battle, 'charge', rules).battle;
+    let battle = makeEncounter('boss', 0);
+    while (enemyIntent(battle) !== 'strike') {
+      battle = resolveEnemy({ ...battle, enemy: { ...battle.enemy, gauge: 1 } }).battle;
     }
-    const result = step(battle, 'charge', rules);
-    expect(result.enemyDamage).toBe(config.encounters.boss.attack);
-    expect(result.battle.hero.hp).toBe(battle.hero.hp - config.encounters.boss.attack);
+    battle = { ...battle, enemy: { ...battle.enemy, gauge: rules.telegraphAt } };
+    expect(telegraph(battle, rules.telegraphAt)).toBe(true);
+    const result = resolveEnemy({ ...battle, enemy: { ...battle.enemy, gauge: 1 } });
+    expect(result.damage).toBe(config.encounters.boss.attack);
+    expect(result.battle.party[0]?.hp).toBe(config.hero.maxHp - config.encounters.boss.attack);
   });
 });
 
 describe('tutorial', () => {
   it('deals 9999 on the guided attack', () => {
-    let battle = makeBattle('tutorial', 0);
+    let battle = openWindow(makeEncounter('tutorial', 0));
     for (const command of config.tutorial.steps) {
       const forceDamage = command === 'attack' ? config.tutorial.damage : undefined;
-      const result = step(battle, command, rules, { forceDamage });
+      const result = act(openWindow(battle), command, rules, forceDamage);
       battle = result.battle;
       if (command === 'attack') {
-        expect(result.heroDamage).toBe(9999);
+        expect(result.damage).toBe(9999);
         expect(battle.outcome).toBe('win');
         expect(battle.enemy.hp).toBe(0);
       }
@@ -75,71 +136,56 @@ describe('tutorial', () => {
   });
 });
 
-describe('fight length', () => {
-  it('drops the minion and the boss inside the one-to-two minute window', () => {
-    const minion = simulate(makeBattle('minion', 0), (battle) => pacePolicy(battle, rules.chargeCap), rules, 80);
-    const boss = simulate(makeBattle('boss', 0), (battle) => pacePolicy(battle, rules.chargeCap), rules, 80);
-
-    expect(minion.battle.outcome).toBe('win');
-    expect(boss.battle.outcome).toBe('win');
-    expect(minion.turns).toBeGreaterThanOrEqual(minFightTurns);
-    expect(minion.turns).toBeLessThanOrEqual(maxFightTurns);
-    expect(boss.turns).toBeGreaterThanOrEqual(minFightTurns);
-    expect(boss.turns).toBeLessThanOrEqual(maxFightTurns);
-
-    const sessionSeconds =
-      config.tutorial.seconds + (minion.turns + boss.turns) * config.time.turnSeconds;
-    expect(sessionSeconds).toBeLessThanOrEqual(config.time.sessionMaxSeconds);
-    expect(minion.turns * config.time.turnSeconds).toBeGreaterThanOrEqual(config.time.minFightSeconds);
-    expect(boss.turns * config.time.turnSeconds).toBeGreaterThanOrEqual(config.time.minFightSeconds);
+describe('session', () => {
+  it('keeps a prompt session near three minutes without a full life bar', () => {
+    expect(tutorialSeconds()).toBeGreaterThan(8);
+    expect(tutorialSeconds()).toBeLessThan(14);
+    for (const id of config.campaign.minions) {
+      const report = simulateSession(promptProfile(), id, 0, rules);
+      expect(report.outcome).toBe('win');
+      expect(report.time).toBeGreaterThanOrEqual(140);
+      expect(report.time).toBeLessThanOrEqual(config.time.sessionMaxSeconds);
+      expect(report.bossHp).toBeGreaterThan(config.hero.maxHp * 0.15);
+      expect(report.bossHp).toBeLessThanOrEqual(config.hero.maxHp * 0.5);
+      expect(report.minionHp).toBeGreaterThan(0);
+      expect(report.minionHp).toBeLessThan(config.hero.maxHp);
+    }
   });
-});
 
-describe('fight length', () => {
-  it('keeps tutorial plus any minion plus the boss within three minutes', () => {
-    const boss = simulate(makeBattle('boss', 0), (battle) => pacePolicy(battle, rules.chargeCap), rules, 80);
-    expect(boss.battle.outcome).toBe('win');
-    expect(boss.turns).toBe(17);
-    const bossSeconds = boss.turns * config.time.turnSeconds;
-    expect(bossSeconds).toBe(85);
-
-    const measured = config.campaign.minions.map((id) => {
-      const sim = simulate(makeBattle(id, 0), (battle) => pacePolicy(battle, rules.chargeCap), rules, 80);
-      expect(sim.battle.outcome).toBe('win');
-      expect(sim.turns).toBeGreaterThanOrEqual(minFightTurns);
-      expect(sim.turns).toBeLessThanOrEqual(maxFightTurns);
-      const seconds = sim.turns * config.time.turnSeconds;
-      const sum = config.tutorial.seconds + seconds + bossSeconds;
-      expect(sum).toBeLessThanOrEqual(config.time.sessionMaxSeconds);
-      return { id, turns: sim.turns, seconds, sum };
-    });
-
-    expect(measured).toEqual([
-      { id: 'minion', turns: 13, seconds: 65, sum: 162 },
-      { id: 'minion2', turns: 14, seconds: 70, sum: 167 },
-      { id: 'minion3', turns: 15, seconds: 75, sum: 172 },
-    ]);
-    expect(config.tutorial.seconds).toBe(12);
+  it('lets a hesitant player win some sessions and lose others', () => {
+    const seeds = 40;
+    for (const id of config.campaign.minions) {
+      let wins = 0;
+      for (let seed = 1; seed <= seeds; seed += 1) {
+        const report = simulateSession(hesitantProfile(seed), id, 0, rules);
+        if (report.outcome === 'win') wins += 1;
+      }
+      expect(wins / seeds).toBeGreaterThanOrEqual(0.25);
+      expect(wins / seeds).toBeLessThanOrEqual(0.75);
+    }
   });
 });
 
 describe('variety', () => {
-  it('gives each foe its own pattern and a same-turn ! that guard cancels', () => {
+  it('gives each foe its own pattern and a strike guard can cancel', () => {
     const ids = ['minion', 'minion2', 'minion3', 'boss'] as const;
     const patterns = ids.map((id) => config.encounters[id].pattern.join(','));
     expect(new Set(patterns).size).toBe(ids.length);
     for (const id of ids) {
-      let battle = makeBattle(id, 0);
+      let battle = makeEncounter(id, 0);
       const pattern = config.encounters[id].pattern;
       expect(pattern.includes('strike')).toBe(true);
       for (const intent of pattern) {
-        expect(intentAt(battle)).toBe(intent);
+        expect(enemyIntent(battle)).toBe(intent);
         if (intent === 'strike') {
-          const guarded = step(battle, 'guard', rules);
-          expect(guarded.enemyDamage).toBe(0);
+          const guarded = resolveEnemy({
+            ...openWindow(act(openWindow(battle), 'guard', rules).battle),
+            enemy: { ...battle.enemy, gauge: 1 },
+          });
+          expect(guarded.damage).toBe(0);
           expect(guarded.guarded).toBe(true);
         }
-        battle = step(battle, 'charge', rules).battle;
+        battle = resolveEnemy({ ...battle, enemy: { ...battle.enemy, gauge: 1 } }).battle;
       }
     }
   });
@@ -239,24 +285,37 @@ describe('tutorial commands', () => {
 
 describe('free-play cursor', () => {
   it('follows charge or guard on a telegraph instead of sticking on attack', () => {
-    let battle = makeBattle('minion', 0);
-    expect(pacePolicy(battle, rules.chargeCap)).toBe('charge');
+    let battle = openWindow(makeEncounter('minion', 0));
+    expect(suggestCommand(battle, rules)).toBe('charge');
     const charging = commandMenu({ tutorialStep: null, comboReady: false, open: true, suggest: 'charge' });
     expect(charging.charge.hot).toBe(true);
     expect(charging.attack.hot).toBe(false);
     expect(charging.attack.disabled).toBe(false);
     expect(charging.guard.disabled).toBe(false);
 
-    while (intentAt(battle) !== 'strike') battle = step(battle, 'charge', rules).battle;
-    const threatened = { ...battle, hero: { ...battle.hero, hp: battle.enemy.attack } };
-    expect(pacePolicy(threatened, rules.chargeCap)).toBe('guard');
+    while (enemyIntent(battle) !== 'strike') {
+      battle = resolveEnemy({ ...battle, enemy: { ...battle.enemy, gauge: 1 } }).battle;
+    }
+    const hero = battle.party[0];
+    if (!hero) throw new Error('missing hero');
+    const threatened = openWindow({
+      ...battle,
+      enemy: { ...battle.enemy, gauge: 1 },
+      party: [{ ...hero, hp: battle.enemy.attack, gauge: 1 }],
+    });
+    expect(telegraph(threatened, rules.telegraphAt)).toBe(true);
+    expect(suggestCommand(threatened, rules)).toBe('guard');
     const guarding = commandMenu({ tutorialStep: null, comboReady: false, open: true, suggest: 'guard' });
     expect(guarding.guard.hot).toBe(true);
     expect(guarding.attack.hot).toBe(false);
     expect(guarding.charge.hot).toBe(false);
 
-    const ready = { ...battle, hero: { ...battle.hero, multiplier: rules.chargeCap } };
-    expect(pacePolicy(ready, rules.chargeCap)).toBe('attack');
+    const ready = openWindow({
+      ...battle,
+      enemy: { ...battle.enemy, gauge: 0 },
+      party: [{ ...hero, multiplier: rules.chargeCap, gauge: 1 }],
+    });
+    expect(suggestCommand(ready, rules)).toBe('attack');
     const releasing = commandMenu({ tutorialStep: null, comboReady: false, open: true, suggest: 'attack' });
     expect(releasing.attack.hot).toBe(true);
     expect(releasing.charge.hot).toBe(false);
@@ -264,7 +323,7 @@ describe('free-play cursor', () => {
 });
 
 describe('combo', () => {
-  it('charges all four allies and strikes at once for the cap', () => {
+  it('spends every ally at the charge cap in one swing', () => {
     expect(quadChargeReady(4, config.campaign.combo)).toBe(true);
     expect(quadChargeReady(3, config.campaign.combo)).toBe(false);
     const open = commandMenu({ tutorialStep: null, comboReady: true, open: true });
@@ -272,17 +331,15 @@ describe('combo', () => {
     expect(open.combo.disabled).toBe(false);
     expect(open.attack.hidden).toBe(false);
 
-    let battle = makeBattle('minion3', 4);
-    battle = step(battle, 'charge', rules).battle;
+    let battle = openWindow(makeEncounter('minion3', 4));
+    battle = openWindow(act(battle, 'charge', rules).battle);
     const before = battle.enemy.hp;
-    const result = step(battle, 'combo', rules);
+    const result = act(battle, 'combo', rules);
     const each = config.ally.attack * config.charge.cap;
-    expect(result.heroDamage).toBe(0);
-    expect(result.battle.hero.multiplier).toBe(2);
-    expect(result.allyDamage).toEqual([each, each, each, each]);
+    expect(result.damage).toBe(each * 4);
+    expect(result.battle.party[0]?.multiplier).toBe(2);
     expect(result.battle.enemy.hp).toBe(Math.max(0, before - each * 4));
-    expect(result.battle.outcome).toBe(before <= each * 4 ? 'win' : 'ongoing');
-    expect(result.battle.allies.every((ally) => ally.multiplier === 1)).toBe(true);
+    expect(result.battle.party.slice(1).every((ally) => ally.multiplier === 1)).toBe(true);
   });
 });
 

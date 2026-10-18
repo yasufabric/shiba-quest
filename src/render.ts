@@ -82,6 +82,11 @@ export interface Scene {
   curtain: 'title' | 'ending' | null;
   /** Index of the ally being offered. Null outside recruit. */
   recruitAlly: number | null;
+  /** 0 empty, 1 full. Index 0 is the hero. */
+  partyGauges: readonly number[];
+  enemyGauge: number;
+  /** Party index whose command window is open. */
+  acting: number | null;
   bang: boolean;
   numbers: readonly FloatNumber[];
   fragments: readonly Fragment[];
@@ -399,6 +404,7 @@ function enemyFrame(frames: DogFrames, scene: Scene): Sprite {
 function drawEnemy(ctx: CanvasRenderingContext2D, scene: Scene, bob: number): void {
   const sprite = enemyFrame(enemyFrames[scene.encounter], scene);
   blit(ctx, sprite, scene.enemyX, scene.enemyY + bob, 1);
+  drawGauge(ctx, scene.enemyX, scene.enemyY + bob, sprite.h, 1, scene.enemyGauge, scene.bang);
   if (scene.enemyFlash > 0) {
     blit(ctx, sprite, scene.enemyX, scene.enemyY + bob, 1, {
       tint: '#ffffff',
@@ -484,6 +490,7 @@ function drawHero(ctx: CanvasRenderingContext2D, scene: Scene): void {
   if (scene.heroFlash > 0) {
     blit(ctx, sprite, x, y - hop, drawn, { tint: '#ffffff', alpha: scene.heroFlash });
   }
+  drawGauge(ctx, x, y - hop, sprite.h, drawn, scene.partyGauges[0] ?? 0, scene.acting === 0);
 }
 
 function partySprite(pose: Pose, glow: number, flash: number, celebrating: boolean, time: number, offset: number): Sprite {
@@ -615,6 +622,32 @@ function drawAllies(ctx: CanvasRenderingContext2D, scene: Scene): void {
       ally.y + (goalY - ally.y) * rush - (scene.celebrating ? Math.sin(scene.time * 8 + ally.index) * 2 : 0);
     const scale = 1 + scene.summon * 0.12;
     blit(ctx, sprite, x, y, scale);
+    const partyIndex = ally.index + 1;
+    drawGauge(ctx, x, y, sprite.h, scale, scene.partyGauges[partyIndex] ?? 0, scene.acting === partyIndex);
+  }
+}
+
+function drawGauge(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  feet: number,
+  spriteH: number,
+  scale: number,
+  amount: number,
+  hot: boolean,
+): void {
+  const width = 18;
+  const height = 3;
+  const left = Math.round(x - width / 2);
+  const top = Math.round(feet - spriteH * scale - 5);
+  const filled = Math.max(0, Math.min(width, Math.round(width * amount)));
+  ctx.fillStyle = '#101828';
+  ctx.fillRect(left - 1, top - 1, width + 2, height + 2);
+  ctx.fillStyle = hot || amount >= 1 ? '#f0c84a' : '#6eb0d8';
+  if (filled > 0) ctx.fillRect(left, top, filled, height);
+  if (filled < width) {
+    ctx.fillStyle = '#243044';
+    ctx.fillRect(left + filled, top, width - filled, height);
   }
 }
 
