@@ -32,6 +32,13 @@ export function recruitAlly(save: SaveData): SaveData | null {
   return { ...save, bones: save.bones - 1, allies: save.allies + 1 };
 }
 
+/** One clear fields one ally and leaves the card. A spare bone stays banked. */
+export function acceptRecruit(save: SaveData): SaveData | null {
+  const next = recruitAlly(save);
+  if (!next) return null;
+  return { ...next, recruitPending: false };
+}
+
 export function keepRecruiting(save: SaveData): boolean {
   return save.bones >= 1 && save.allies < config.ally.maxCount;
 }
@@ -50,8 +57,8 @@ export function isCampaignId(value: unknown): value is CampaignId {
 
 /**
  * A win banks one bone. A minion leads to the boss. The boss leads to a new
- * random minion and opens recruit, one ally at a time. The tutorial never calls this.
- * Two bones a run, so four allies take more than one run.
+ * random minion and opens one recruit. The tutorial never calls this.
+ * A spare bone stays for a later run, so four allies take more than one run.
  */
 export function resolveWin(save: SaveData, defeated: CampaignId, roll = 0): SaveData {
   const paid = grantBone(save);
