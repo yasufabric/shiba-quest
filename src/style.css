@@ -57,21 +57,24 @@ button {
   display: flex;
   flex-direction: column;
   position: relative;
-  background: var(--bg);
+  padding-top: env(safe-area-inset-top);
+  background: #182868;
   overflow: hidden;
 }
 
 #stage {
   flex: 1;
   min-height: 0;
-  display: grid;
-  align-items: end;
-  justify-items: center;
+  position: relative;
+  overflow: hidden;
   background: #182868;
 }
 
 #battle {
   display: block;
+  position: absolute;
+  bottom: 0;
+  left: 0;
   width: 195px;
   height: 240px;
   background: #182868;

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { FIELD_HORIZON, VIEW_H, VIEW_W, roadHalf } from './render';
+import { FIELD_HORIZON, fieldCover, roadHalf } from './render';
 
 describe('shrine road', () => {
   it('is one band that widens from the gate to the party', () => {
@@ -13,8 +13,17 @@ describe('shrine road', () => {
     expect(roadHalf(horizon - 4, height)).toBeNull();
   });
 
-  it('fills a 390-wide phone at an integer 2× scale', () => {
-    expect(VIEW_W * 2).toBe(390);
-    expect(VIEW_H * 2).toBe(480);
+  it('covers the phone with integer pixels and no empty band', () => {
+    const wide = fieldCover(390, 566);
+    expect(wide.scale).toBe(2);
+    expect(wide.cssWidth).toBeGreaterThanOrEqual(390);
+    expect(wide.cssHeight).toBeGreaterThanOrEqual(566);
+    expect(wide.cssWidth - 390).toBeLessThan(wide.scale);
+    expect(wide.cssHeight - 566).toBeLessThan(wide.scale);
+    const odd = fieldCover(375, 701);
+    expect(odd.scale).toBe(2);
+    expect(odd.cssWidth).toBeGreaterThanOrEqual(375);
+    expect(odd.cssHeight).toBeGreaterThanOrEqual(701);
+    expect(odd.cssWidth % odd.scale).toBe(0);
   });
 });
