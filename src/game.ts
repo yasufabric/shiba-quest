@@ -1,5 +1,5 @@
 import { config, type Command, type EncounterId } from './config';
-import { acceptRecruit, continueAfterBoss, isCampaignId, keepRecruiting, noteDamage, pickMinion, resolveWin, type SaveData } from './campaign';
+import { continueAfterBoss, isCampaignId, noteDamage, pickMinion, resolveWin, type SaveData } from './campaign';
 import { quadChargeReady } from './combat';
 import {
   act,
@@ -19,7 +19,7 @@ import { commandMenu, fingerHint } from './menu';
 import { meterLow, meterPercent } from './meters';
 import { bedForTutorial, refreshMusic, requestMusic } from './music';
 import { enemyFrames } from './dogs';
-import { allySprites, blit, bone as boneSprite, finger, shatterBlocks, type Sprite } from './sprites';
+import { blit, bone as boneSprite, finger, shatterBlocks, type Sprite } from './sprites';
 
 const rules: AtbRules = { chargeCap: config.charge.cap, telegraphAt: config.atb.telegraphAt };
 
@@ -110,15 +110,11 @@ export function startGame(): void {
   fit(ui, state);
   paintFinger(ui);
   paintBoneIcon(ui);
-  paintRecruit(ui, state.save.allies);
-  if (state.save.recruitPending && keepRecruiting(state.save)) openRecruit(state, ui);
-  else {
-    if (state.save.recruitPending) {
-      state.save = { ...state.save, recruitPending: false };
-      writeSave(state.save);
-    }
-    showTitle(state, ui);
+  if (state.save.recruitPending) {
+    state.save = { ...state.save, recruitPending: false };
+    writeSave(state.save);
   }
+  showTitle(state, ui);
 
   ui.commandButtons.forEach((button) => {
     button.addEventListener('click', () => {
@@ -148,11 +144,8 @@ export function startGame(): void {
       return;
     }
     if (state.phase !== 'ending') return;
-    const next = continueAfterBoss(state.save);
+    const next = continueAfterBoss();
     switch (next) {
-      case 'recruit':
-        openRecruit(state, ui);
-        return;
       case 'fight':
         state.generation += 1;
         begin(state, ui, state.save.encounter);
@@ -162,15 +155,6 @@ export function startGame(): void {
         throw new Error(`unknown curtain ${String(neverNext)}`);
       }
     }
-  });
-  ui.recruit.addEventListener('click', () => {
-    unlockAudio();
-    const next = acceptRecruit(state.save);
-    if (!next) return;
-    state.save = next;
-    writeSave(state.save);
-    state.generation += 1;
-    begin(state, ui, state.save.encounter);
   });
 
   const onResize = () => {
@@ -240,9 +224,8 @@ function createState(save: SaveData): State {
 
 function begin(state: State, ui: Ui, encounter: EncounterId): void {
   state.generation += 1;
-  const allies = encounter === 'tutorial' ? 0 : state.save.allies;
   state.encounter = encounter;
-  state.battle = makeEncounter(encounter, allies);
+  state.battle = makeEncounter(encounter, config.ally.fieldCount);
   state.actor = 0;
   state.busy = false;
   state.shownHeroHp = state.battle.party[0]?.hp ?? config.hero.maxHp;
@@ -301,17 +284,6 @@ function enterEnding(state: State, ui: Ui): void {
   state.pose = 'idle';
   syncCommands(ui, state);
   showModal(ui, null);
-  mark(state, ui);
-}
-
-function openRecruit(state: State, ui: Ui): void {
-  state.phase = 'recruit';
-  state.enemyVisible = false;
-  state.bang = false;
-  state.pose = 'idle';
-  syncCommands(ui, state);
-  showModal(ui, 'recruit');
-  paintRecruit(ui, state.save.allies);
   mark(state, ui);
 }
 
@@ -684,7 +656,7 @@ function remember(state: State, damage: number, scripted: boolean): void {
 }
 
 function toScene(state: State): Scene {
-  const allyCount = state.encounter === 'tutorial' ? 0 : state.save.allies;
+  const allyCount = config.ally.fieldCount;
   const place = battleAnchors(state.encounter, state.width, state.height);
   return {
     width: state.width,
@@ -735,7 +707,7 @@ function syncHud(state: State, ui: Ui): void {
   const actor = state.battle.party[state.battle.acting ?? 0];
   ui.charge.textContent = actor && actor.multiplier > 1 ? `x${actor.multiplier}` : '';
   ui.enemyName.textContent = config.encounters[state.encounter].name;
-  const shownAllies = state.encounter === 'tutorial' ? 0 : state.save.allies;
+  const shownAllies = config.ally.fieldCount;
   syncRoster(ui, shownAllies);
   ui.bones.textContent = String(state.save.bones);
   const record = state.save.bestDamage > 0 ? String(state.save.bestDamage) : '';
@@ -771,7 +743,7 @@ function mark(state: State, ui: Ui): void {
   ui.app.dataset.phase = state.phase;
   ui.app.dataset.enemy = state.encounter;
   ui.app.dataset.bang = state.bang && state.enemyVisible ? '1' : '0';
-  ui.app.dataset.allies = String(state.encounter === 'tutorial' ? 0 : state.save.allies);
+  ui.app.dataset.allies = String(config.ally.fieldCount);
   ui.app.dataset.bones = String(state.save.bones);
   ui.app.dataset.best = String(state.save.bestDamage);
   ui.app.dataset.tutorial = state.tutorialStep === null ? 'done' : String(state.tutorialStep);
@@ -813,7 +785,7 @@ function syncCommands(ui: Ui, state: State): void {
   ui.commands.hidden = !visible;
   const menu = commandMenu({
     tutorialStep: tutorial ? state.tutorialStep : null,
-    comboReady: quadChargeReady(state.save.allies, config.campaign.combo),
+    comboReady: quadChargeReady(config.ally.fieldCount, config.campaign.combo),
     open,
     suggest: suggestCommand(state.battle, rules),
   });
@@ -851,10 +823,10 @@ function syncFinger(ui: Ui, state: State, open: boolean): void {
   ui.finger.hidden = false;
 }
 
-function showModal(ui: Ui, which: 'retry' | 'recruit' | null): void {
+function showModal(ui: Ui, which: 'retry' | null): void {
   ui.modal.hidden = which === null;
   ui.retry.hidden = which !== 'retry';
-  ui.recruit.hidden = which !== 'recruit';
+  ui.recruit.hidden = true;
 }
 
 function paintFinger(ui: Ui): void {
@@ -870,16 +842,6 @@ function paintBoneIcon(ui: Ui): void {
   if (!ctx) return;
   ctx.imageSmoothingEnabled = false;
   blit(ctx, boneSprite, ui.boneIcon.width / 2, ui.boneIcon.height, 2);
-}
-
-function paintRecruit(ui: Ui, allyIndex: number): void {
-  const ctx = ui.recruitBone.getContext('2d');
-  if (!ctx) return;
-  ctx.imageSmoothingEnabled = false;
-  ctx.clearRect(0, 0, ui.recruitBone.width, ui.recruitBone.height);
-  blit(ctx, boneSprite, 64, 100, 3);
-  const sprite = allySprites[Math.min(allySprites.length - 1, Math.max(0, allyIndex))];
-  if (sprite) blit(ctx, sprite, 156, 112, 3);
 }
 
 function chargeStep(multiplier: number): number {
