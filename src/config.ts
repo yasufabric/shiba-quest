@@ -1,24 +1,46 @@
 /**
  * Every tuning number for しばクエスト lives here.
  *
- * Pace (solo hero, no allies):
- *   The mark "!" is up on a strike turn; guard on that turn zeros it.
- *   Charge doubles the next attack: x2, x4, x8, x16, and x16 is the cap.
- *   The intended turn is: kill if this swing finishes, else guard a lethal
- *   telegraph, else release at x16, else charge.
- *   A run is one minion, then the boss. The minion is a random pick from
- *   ちわわ (13 turns, 65s), だくす (14 turns, 70s), and ぱぐ (15 turns, 75s).
- *   The boss falls on turn 17 (85s).
- *   Tutorial (12s) plus that pair is 162s, 167s, or 172s, all within 180s.
- *   Allies add damage and are not part of this measurement.
- *   Spamming attack loses. Never guarding loses the boss.
+ * Active Time Battle, solo hero (allies, when fielded, have their own gauges):
+ *   Gauges fill in real time. The command window opens when a member is full.
+ *   The enemy acts on its own gauge, including while the window is open.
+ *   "!" shows once a strike gauge passes the telegraph mark. まもる zeros that hit.
+ *   Charge doubles the actor's next attack: x2, x4, x8, x16, and x16 is the cap.
+ *   A fresh run is the tutorial, one random minion, then the boss, near 3 minutes.
+ *   A prompt player should win with life left, not a full bar. A hesitant player can still win.
  */
 export const config = {
   time: {
     turnSeconds: 5,
     minFightSeconds: 60,
     maxFightSeconds: 120,
-    sessionMaxSeconds: 180,
+    sessionMaxSeconds: 200,
+  },
+  atb: {
+    /** Seconds for a gauge to fill from empty. */
+    heroFill: 2,
+    allyFill: 2.8,
+    telegraphAt: 0.08,
+    promptDelay: 0.4,
+    hesitantMin: 1.45,
+    hesitantMax: 2.6,
+    /** Chance a hesitant player charges through a telegraph they meant to guard. */
+    hesitantMiss: 0.28,
+    anim: {
+      charge: 0.34,
+      attack: 0.45,
+      guard: 0.3,
+      windup: 0.16,
+      strike: 0.42,
+      shatter: 1.75,
+    },
+    enemyFill: {
+      tutorial: 0,
+      minion: 4.19,
+      minion2: 4.44,
+      minion3: 3.94,
+      boss: 3.81,
+    },
   },
   hero: {
     maxHp: 96,
@@ -40,7 +62,7 @@ export const config = {
   tutorial: {
     steps: ['charge', 'charge', 'attack'] as const,
     damage: 9999,
-    seconds: 12,
+    seconds: 10,
   },
   encounters: {
     tutorial: {
@@ -51,25 +73,25 @@ export const config = {
     },
     minion: {
       name: 'ちわわ',
-      hp: 480,
+      hp: 760,
       attack: 16,
       pattern: ['windup', 'windup', 'strike'] as const,
     },
     minion2: {
       name: 'だくす',
-      hp: 500,
-      attack: 18,
+      hp: 675,
+      attack: 12,
       pattern: ['windup', 'strike'] as const,
     },
     minion3: {
       name: 'ぱぐ',
-      hp: 640,
+      hp: 980,
       attack: 14,
       pattern: ['windup', 'windup', 'windup', 'strike'] as const,
     },
     boss: {
       name: 'あきた',
-      hp: 620,
+      hp: 837,
       attack: 20,
       pattern: ['windup', 'strike', 'windup', 'windup', 'strike'] as const,
     },
@@ -93,7 +115,7 @@ export const config = {
     shatterMs: 1750,
     guardMs: 300,
     boneMs: 780,
-    /** Held after a minion win, outside the turn clock. Not part of 162/167/172. */
+    /** Held after a minion win, between the bone and the boss. */
     victoryHoldMs: 1600,
     hitStopMs: 90,
     shakeTutorial: 6,
