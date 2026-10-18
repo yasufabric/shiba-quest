@@ -1,5 +1,5 @@
 import { config, type Command, type EncounterId } from './config';
-import { continueAfterBoss, isCampaignId, keepRecruiting, noteDamage, pickMinion, recruitAlly, resolveWin, type SaveData } from './campaign';
+import { acceptRecruit, continueAfterBoss, isCampaignId, keepRecruiting, noteDamage, pickMinion, resolveWin, type SaveData } from './campaign';
 import { intentAt, pacePolicy, quadChargeReady, step, type Battle } from './combat';
 import { makeBattle } from './setup';
 import { loadSave, writeSave } from './save';
@@ -149,16 +149,10 @@ export function startGame(): void {
   });
   ui.recruit.addEventListener('click', () => {
     unlockAudio();
-    const next = recruitAlly(state.save);
+    const next = acceptRecruit(state.save);
     if (!next) return;
-    const more = keepRecruiting(next);
-    state.save = { ...next, recruitPending: more };
+    state.save = next;
     writeSave(state.save);
-    paintRecruit(ui, state.save.allies);
-    if (more) {
-      openRecruit(state, ui);
-      return;
-    }
     state.generation += 1;
     begin(state, ui, state.save.encounter);
   });

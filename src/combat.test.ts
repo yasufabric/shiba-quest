@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { config, maxFightTurns, minFightTurns } from './config';
-import { continueAfterBoss, defaultSave, keepRecruiting, noteDamage, pickMinion, recruitAlly, resolveWin } from './campaign';
+import { acceptRecruit, continueAfterBoss, defaultSave, keepRecruiting, noteDamage, pickMinion, recruitAlly, resolveWin } from './campaign';
 import { intentAt, pacePolicy, quadChargeReady, simulate, step } from './combat';
 import { commandMenu, fingerHint } from './menu';
 import { makeBattle } from './setup';
@@ -159,20 +159,26 @@ describe('campaign', () => {
     expect(save).toMatchObject({ bones: 2, allies: 0, encounter: 'minion3', recruitPending: true });
     expect(continueAfterBoss(save)).toBe('recruit');
 
-    save = recruitAlly(save) ?? save;
-    expect(save.allies).toBe(1);
+    save = acceptRecruit(save) ?? save;
+    expect(save).toMatchObject({ allies: 1, bones: 1, recruitPending: false, encounter: 'minion3' });
     expect(keepRecruiting(save)).toBe(true);
-    save = recruitAlly(save) ?? save;
-    expect(save).toMatchObject({ allies: 2, bones: 0 });
-    expect(keepRecruiting(save)).toBe(false);
+    expect(continueAfterBoss(save)).toBe('fight');
 
-    save = resolveWin({ ...save, recruitPending: false }, 'minion');
+    save = resolveWin(save, 'minion3');
     save = resolveWin(save, 'boss', 0);
-    expect(save).toMatchObject({ bones: 2, allies: 2, encounter: 'minion', recruitPending: true });
-    save = recruitAlly(save) ?? save;
-    save = recruitAlly(save) ?? save;
-    expect(save).toMatchObject({ allies: 4, bones: 0 });
+    expect(save.bones).toBe(3);
+    save = acceptRecruit(save) ?? save;
+    expect(save).toMatchObject({ allies: 2, bones: 2, recruitPending: false });
+
+    save = resolveWin(save, 'minion');
+    save = resolveWin(save, 'boss', 0);
+    save = acceptRecruit(save) ?? save;
+    save = resolveWin(save, 'minion2');
+    save = resolveWin(save, 'boss', 0.5);
+    save = acceptRecruit(save) ?? save;
+    expect(save).toMatchObject({ allies: 4, bones: 4, recruitPending: false });
     expect(recruitAlly(save)).toBeNull();
+    expect(acceptRecruit(save)).toBeNull();
     const capped = resolveWin(save, 'boss', 0.5);
     expect(capped.recruitPending).toBe(false);
     expect(continueAfterBoss(capped)).toBe('fight');
