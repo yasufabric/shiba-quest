@@ -68,6 +68,8 @@ export interface Scene {
   /** 0–1 while the four-ally limit plays. Allies rush the enemy. */
   summon: number;
   curtain: 'title' | 'ending' | null;
+  /** Index of the ally being offered. Null outside recruit. */
+  recruitAlly: number | null;
   bang: boolean;
   numbers: readonly FloatNumber[];
   fragments: readonly Fragment[];
@@ -143,6 +145,11 @@ export function drawScene(ctx: CanvasRenderingContext2D, scene: Scene): void {
   ctx.drawImage(ensureBackdrop(width, height), 0, 0);
   if (scene.curtain) {
     drawCurtain(ctx, scene);
+    ctx.restore();
+    return;
+  }
+  if (scene.recruitAlly !== null) {
+    drawRecruit(ctx, scene);
     ctx.restore();
     return;
   }
@@ -390,6 +397,17 @@ function drawSpark(ctx: CanvasRenderingContext2D, x: number, y: number, flash: n
     ctx.fillRect(Math.round(x + dx), Math.round(y + dy), 3, 3);
   }
   ctx.restore();
+}
+
+function drawRecruit(ctx: CanvasRenderingContext2D, scene: Scene): void {
+  const index = scene.recruitAlly ?? 0;
+  const ally = allySprites[Math.min(allySprites.length - 1, Math.max(0, index))];
+  const ground = Math.round(scene.height * 0.74);
+  const x = Math.round(scene.width * 0.56);
+  blit(ctx, bone, x - 34, ground - 6, 4);
+  if (!ally) return;
+  shadow(ctx, x + 18, ground, 14);
+  blit(ctx, ally, x + 18, ground, 3);
 }
 
 function drawCurtain(ctx: CanvasRenderingContext2D, scene: Scene): void {

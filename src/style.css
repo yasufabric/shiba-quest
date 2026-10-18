@@ -314,14 +314,23 @@ button {
 #app[data-phase='title'] #commands,
 #app[data-phase='ending'] #desk,
 #app[data-phase='ending'] #commands,
-#app[data-phase='recruit'] #stage,
 #app[data-phase='recruit'] #desk,
 #app[data-phase='recruit'] #commands {
   visibility: hidden;
 }
 
 #app[data-phase='recruit'] #modal {
-  background: #101830;
+  background: transparent;
+}
+
+#app[data-phase='recruit'] #recruit {
+  position: absolute;
+  inset: 0;
+  animation: none;
+}
+
+#app[data-phase='recruit'] #recruit-bone {
+  visibility: hidden;
 }
 
 #mute {
