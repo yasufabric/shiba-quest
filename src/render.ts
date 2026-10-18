@@ -404,7 +404,7 @@ function drawCurtain(ctx: CanvasRenderingContext2D, scene: Scene): void {
       blit(ctx, sprite, x - 28 + ally.index * 18, y + 8, 1);
     }
   }
-  blit(ctx, title ? hero : heroWin, x, y + bob, title ? 2 : 1);
+  blit(ctx, title ? hero : heroWin, x, y + bob, 2);
   ctx.font = '24px PixelMplus12, monospace';
   ctx.textAlign = 'center';
   ctx.textBaseline = 'top';
