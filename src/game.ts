@@ -4,11 +4,12 @@ import { intentAt, pacePolicy, quadChargeReady, step, type Battle } from './comb
 import { makeBattle } from './setup';
 import { loadSave, writeSave } from './save';
 import { hydrateMute, isMuted, playAttack, playCharge, playGuard, playHit, playShatter, playVictory, setMuted, unlockAudio } from './audio';
-import { battleAnchors, drawScene, VIEW_H, VIEW_W, type FloatNumber, type Fragment, type Pose, type Scene } from './render';
+import { battleAnchors, drawScene, fieldCover, VIEW_H, VIEW_W, type FloatNumber, type Fragment, type Pose, type Scene } from './render';
 import { commandMenu, fingerHint } from './menu';
 import { meterLow, meterPercent } from './meters';
 import { bedForTutorial, refreshMusic, requestMusic } from './music';
-import { allySprites, blit, bone as boneSprite, enemySprites, finger, shatterBlocks, type Sprite } from './sprites';
+import { enemyFrames } from './dogs';
+import { allySprites, blit, bone as boneSprite, finger, shatterBlocks, type Sprite } from './sprites';
 
 const rules = { chargeCap: config.charge.cap };
 
@@ -44,6 +45,7 @@ interface State {
   enemyOy: number;
   pose: Pose;
   allyPose: Pose;
+  enemyPose: Pose;
   enemyVisible: boolean;
   enemyFlash: number;
   heroFlash: number;
@@ -161,6 +163,7 @@ export function startGame(): void {
     fit(ui, state);
     if (state.phase === 'command') setCommands(ui, state, true);
   };
+  void document.fonts.ready.then(onResize);
   window.addEventListener('resize', onResize);
   window.requestAnimationFrame(onResize);
 
@@ -170,6 +173,7 @@ export function startGame(): void {
     last = now;
     state.time = now / 1000;
     advance(state, dt);
+    fit(ui, state);
     drawScene(ui.ctx, toScene(state));
     syncHud(state, ui);
     window.requestAnimationFrame(frame);
@@ -198,6 +202,7 @@ function createState(save: SaveData): State {
     enemyOy: 0,
     pose: 'idle',
     allyPose: 'idle',
+    enemyPose: 'idle',
     enemyVisible: true,
     enemyFlash: 0,
     heroFlash: 0,
@@ -233,6 +238,7 @@ function begin(state: State, ui: Ui, encounter: EncounterId): void {
   state.enemyOy = 0;
   state.pose = 'idle';
   state.allyPose = 'idle';
+  state.enemyPose = 'idle';
   state.enemyVisible = true;
   state.enemyFlash = 0;
   state.heroFlash = 0;
@@ -250,6 +256,7 @@ function begin(state: State, ui: Ui, encounter: EncounterId): void {
   showModal(ui, null);
   setCommands(ui, state, true);
   mark(state, ui);
+  fit(ui, state);
 }
 
 function showTitle(state: State, ui: Ui): void {
@@ -361,6 +368,7 @@ async function runTurn(state: State, ui: Ui, command: Command): Promise<void> {
         const total = result.allyDamage.reduce((sum, hit) => sum + hit, 0);
         spawnNumber(state, total, 0.44, 0.36, true);
         state.shownEnemyHp = result.battle.enemy.hp;
+        if (state.shownEnemyHp <= 0) state.enemyPose = 'down';
         state.enemyFlash = 1;
         state.shake = config.juice.shakeHeavy;
         state.flash = 0.35;
@@ -392,6 +400,7 @@ async function runTurn(state: State, ui: Ui, command: Command): Promise<void> {
         state.allyHits += 1;
         spawnNumber(state, damage, 0.5, 0.36, false);
         state.shownEnemyHp = Math.max(0, state.shownEnemyHp - damage);
+        if (state.shownEnemyHp <= 0) state.enemyPose = 'down';
         state.enemyFlash = 1;
         playHit();
         remember(state, damage, false);
@@ -404,9 +413,10 @@ async function runTurn(state: State, ui: Ui, command: Command): Promise<void> {
 
   if (result.battle.outcome !== 'win' && result.intent === 'strike') {
     let impacted = false;
+    state.enemyPose = 'lunge';
     await tween(config.juice.strikeMs, alive, (t) => {
-      state.enemyOx = 12 * Math.sin(t * Math.PI);
-      state.enemyOy = 6 * Math.sin(t * Math.PI);
+      state.enemyOx = 16 * Math.sin(t * Math.PI);
+      state.enemyOy = 4 * Math.sin(t * Math.PI);
       if (impacted || t < 0.48) return;
       impacted = true;
       spawnNumber(state, result.enemyDamage, 0.66, 0.7, false);
@@ -419,9 +429,11 @@ async function runTurn(state: State, ui: Ui, command: Command): Promise<void> {
     });
     state.enemyOx = 0;
     state.enemyOy = 0;
+    state.enemyPose = state.shownEnemyHp <= 0 ? 'down' : 'idle';
     state.pose = 'idle';
   } else {
     state.pose = 'idle';
+    if (state.shownEnemyHp <= 0) state.enemyPose = 'down';
   }
   if (!alive()) return;
 
@@ -472,6 +484,7 @@ async function runTurn(state: State, ui: Ui, command: Command): Promise<void> {
 function connectHeroHit(state: State, damage: number, scripted: boolean): void {
   spawnNumber(state, damage, scripted ? 0.5 : 0.46, scripted ? 0.55 : 0.4, scripted);
   state.shownEnemyHp = Math.max(0, state.battle.enemy.hp - damage);
+  if (state.shownEnemyHp <= 0) state.enemyPose = 'down';
   state.enemyFlash = 1;
   remember(state, damage, scripted);
   if (!scripted) {
@@ -617,10 +630,11 @@ function toScene(state: State): Scene {
     intro: state.intro,
     celebrating: state.phase === 'reward' || state.phase === 'ending' || state.reward > 0,
     encounter: state.encounter,
-    enemyVisible: state.enemyVisible && state.shownEnemyHp > 0,
+    enemyVisible: state.enemyVisible && (state.shownEnemyHp > 0 || state.enemyPose === 'down'),
     enemyX: place.enemyX + state.enemyOx,
     enemyY: place.enemyY + state.enemyOy,
     enemyFlash: state.enemyFlash,
+    enemyPose: state.enemyPose,
     heroX: place.heroX + state.heroOx,
     heroY: place.heroY,
     heroScale: state.scale,
@@ -703,13 +717,15 @@ function mark(state: State, ui: Ui): void {
 
 function fit(ui: Ui, state: State): void {
   const rect = ui.stage.getBoundingClientRect();
-  const scale = Math.max(1, Math.floor(Math.min(rect.width / VIEW_W, rect.height / VIEW_H)));
-  state.width = VIEW_W;
-  state.height = VIEW_H;
-  ui.battle.width = VIEW_W;
-  ui.battle.height = VIEW_H;
-  ui.battle.style.width = `${VIEW_W * scale}px`;
-  ui.battle.style.height = `${VIEW_H * scale}px`;
+  const field = fieldCover(rect.width, rect.height);
+  if (state.width === field.width && state.height === field.height) return;
+  state.width = field.width;
+  state.height = field.height;
+  ui.battle.width = field.width;
+  ui.battle.height = field.height;
+  ui.battle.style.width = `${field.cssWidth}px`;
+  ui.battle.style.height = `${field.cssHeight}px`;
+  ui.battle.style.left = `${Math.floor((rect.width - field.cssWidth) / 2)}px`;
   ui.ctx.setTransform(1, 0, 0, 1, 0, 0);
   ui.ctx.imageSmoothingEnabled = false;
 }
@@ -794,7 +810,7 @@ function chargeStep(multiplier: number): number {
 }
 
 function spriteFor(encounter: EncounterId): Sprite {
-  return enemySprites[encounter];
+  return enemyFrames[encounter].down;
 }
 
 function isCampaign(id: EncounterId): id is Exclude<EncounterId, 'tutorial'> {

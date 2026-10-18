@@ -4,7 +4,7 @@ import { acceptRecruit, continueAfterBoss, defaultSave, keepRecruiting, noteDama
 import { intentAt, pacePolicy, quadChargeReady, simulate, step } from './combat';
 import { commandMenu, fingerHint } from './menu';
 import { makeBattle } from './setup';
-import { allySprites, crow, hero, heroDown, heroGuard, toad, type Sprite } from './sprites';
+import { akitaSprite, allySprites, chihuahuaSprite, corgiSprite, dachshundSprite, hero, heroDown, heroGuard, pugSprite, type Sprite } from './sprites';
 
 const rules = { chargeCap: config.charge.cap };
 
@@ -288,7 +288,10 @@ describe('combo', () => {
 
 describe('sprites', () => {
   it('ships a distinct original sprite for every foe and ally', () => {
-    expect(spriteSignature(crow)).not.toBe(spriteSignature(toad));
+    const foes = [corgiSprite, chihuahuaSprite, dachshundSprite, pugSprite, akitaSprite];
+    expect(new Set(foes.map(spriteSignature)).size).toBe(foes.length);
+    expect(akitaSprite.h).toBeGreaterThan(hero.h);
+    expect(dachshundSprite.w).toBeGreaterThan(chihuahuaSprite.w);
     expect(allySprites).toHaveLength(config.ally.maxCount);
     expect(heroDown.rows).toHaveLength(heroDown.h);
     for (const row of heroDown.rows) expect(row).toHaveLength(heroDown.w);
@@ -298,7 +301,7 @@ describe('sprites', () => {
     expect(guardTop).not.toMatch(/[a-z0-9]/);
     const signatures = allySprites.map(spriteSignature);
     expect(new Set(signatures).size).toBe(signatures.length);
-    for (const sprite of [crow, toad, ...allySprites]) expectSprite(sprite);
+    for (const sprite of [...foes, ...allySprites]) expectSprite(sprite);
   });
 });
 

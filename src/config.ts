@@ -7,7 +7,7 @@
  *   The intended turn is: kill if this swing finishes, else guard a lethal
  *   telegraph, else release at x16, else charge.
  *   A run is one minion, then the boss. The minion is a random pick from
- *   こおに (13 turns, 65s), からす (14 turns, 70s), and がま (15 turns, 75s).
+ *   ちわわ (13 turns, 65s), だくす (14 turns, 70s), and ぱぐ (15 turns, 75s).
  *   The boss falls on turn 17 (85s).
  *   Tutorial (12s) plus that pair is 162s, 167s, or 172s, all within 180s.
  *   Allies add damage and are not part of this measurement.
@@ -44,31 +44,31 @@ export const config = {
   },
   encounters: {
     tutorial: {
-      name: 'だんご',
+      name: 'こぎ',
       hp: 32,
       attack: 0,
       pattern: ['windup'] as const,
     },
     minion: {
-      name: 'こおに',
+      name: 'ちわわ',
       hp: 480,
       attack: 16,
       pattern: ['windup', 'windup', 'strike'] as const,
     },
     minion2: {
-      name: 'からす',
+      name: 'だくす',
       hp: 500,
       attack: 18,
       pattern: ['windup', 'strike'] as const,
     },
     minion3: {
-      name: 'がま',
+      name: 'ぱぐ',
       hp: 640,
       attack: 14,
       pattern: ['windup', 'windup', 'windup', 'strike'] as const,
     },
     boss: {
-      name: 'まおう',
+      name: 'あきた',
       hp: 620,
       attack: 20,
       pattern: ['windup', 'strike', 'windup', 'windup', 'strike'] as const,

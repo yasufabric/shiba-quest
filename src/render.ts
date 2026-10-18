@@ -1,10 +1,10 @@
 import type { EncounterId } from './config';
+import { allyFrames, enemyFrames, type DogFrames } from './dogs';
 import {
   allySprites,
   bang,
   blit,
   bone,
-  enemySprites,
   hero,
   heroAttack,
   heroCharge,
@@ -19,11 +19,22 @@ import {
 export type Pose = 'idle' | 'lunge' | 'guard' | 'down';
 
 /**
- * Battle framebuffer. 195×240 integer-scales by 2 to 390×480 on a 390×844
- * phone, so the picture meets both sides of the screen and pixels stay square.
+ * Source pixels per phone pixel. 2× keeps the picture crisp and large.
+ * The framebuffer grows to cover the stage; a spare row is cropped, not left as sky.
  */
+export const PIXEL_SCALE = 2;
 export const VIEW_W = 195;
 export const VIEW_H = 240;
+
+export function fieldCover(
+  cssWidth: number,
+  cssHeight: number,
+): { scale: number; width: number; height: number; cssWidth: number; cssHeight: number } {
+  const scale = PIXEL_SCALE;
+  const width = Math.max(1, Math.ceil(Math.max(1, cssWidth) / scale));
+  const height = Math.max(1, Math.ceil(Math.max(1, cssHeight) / scale));
+  return { scale, width, height, cssWidth: width * scale, cssHeight: height * scale };
+}
 
 export interface FloatNumber {
   text: string;
@@ -58,6 +69,7 @@ export interface Scene {
   enemyX: number;
   enemyY: number;
   enemyFlash: number;
+  enemyPose: Pose;
   heroX: number;
   heroY: number;
   heroScale: number;
@@ -85,11 +97,11 @@ export interface Anchors {
 }
 
 const ENEMY_ANCHOR: Record<EncounterId, { x: number; y: number }> = {
-  tutorial: { x: 0.3, y: 0.68 },
-  minion: { x: 0.32, y: 0.72 },
-  minion2: { x: 0.28, y: 0.82 },
-  minion3: { x: 0.3, y: 0.84 },
-  boss: { x: 0.28, y: 0.78 },
+  tutorial: { x: 0.34, y: 0.86 },
+  minion: { x: 0.3, y: 0.84 },
+  minion2: { x: 0.38, y: 0.88 },
+  minion3: { x: 0.32, y: 0.86 },
+  boss: { x: 0.34, y: 0.9 },
 };
 
 /** Feet on the painted field. Enemies stand left, the party clusters on the right. */
@@ -99,7 +111,7 @@ export function battleAnchors(encounter: EncounterId, width: number, height: num
     enemyX: Math.round(width * enemy.x),
     enemyY: Math.round(height * enemy.y),
     heroX: Math.round(width * 0.74),
-    heroY: Math.round(height * 0.9),
+    heroY: Math.round(height * 0.92),
     allies: [
       { x: Math.round(width * 0.9), y: Math.round(height * 0.96) },
       { x: Math.round(width * 0.82), y: Math.round(height * 0.8) },
@@ -158,7 +170,7 @@ export function drawScene(ctx: CanvasRenderingContext2D, scene: Scene): void {
   for (const ally of scene.allies) shadow(ctx, ally.x, ally.y, 7);
 
   if (scene.enemyVisible) {
-    const bob = Math.sin(scene.time * 2.2) * 1;
+    const bob = scene.enemyPose === 'down' ? 0 : Math.sin(scene.time * 2.2) * 1;
     drawEnemy(ctx, scene, bob);
     if (scene.bang) drawBang(ctx, scene, bob);
   }
@@ -365,8 +377,27 @@ function shadow(ctx: CanvasRenderingContext2D, x: number, y: number, rx: number)
   ctx.fillRect(x - Math.round(wide * 0.6), y - 3, Math.round(wide * 1.2), 2);
 }
 
+function enemyFrame(frames: DogFrames, scene: Scene): Sprite {
+  if (scene.enemyFlash > 0.35 && scene.enemyPose !== 'down') return frames.hit;
+  switch (scene.enemyPose) {
+    case 'down':
+      return frames.down;
+    case 'lunge':
+      return frames.attack;
+    case 'guard':
+      return frames.guard;
+    case 'idle':
+      if (scene.bang) return frames.guard;
+      return Math.floor(scene.time * 1.5) % 2 === 1 ? frames.idle2 : frames.idle;
+    default: {
+      const neverPose: never = scene.enemyPose;
+      throw new Error(`unknown enemy pose ${String(neverPose)}`);
+    }
+  }
+}
+
 function drawEnemy(ctx: CanvasRenderingContext2D, scene: Scene, bob: number): void {
-  const sprite = enemySprite(scene.encounter);
+  const sprite = enemyFrame(enemyFrames[scene.encounter], scene);
   blit(ctx, sprite, scene.enemyX, scene.enemyY + bob, 1);
   if (scene.enemyFlash > 0) {
     blit(ctx, sprite, scene.enemyX, scene.enemyY + bob, 1, {
@@ -404,10 +435,10 @@ function drawRecruit(ctx: CanvasRenderingContext2D, scene: Scene): void {
   const ally = allySprites[Math.min(allySprites.length - 1, Math.max(0, index))];
   const ground = Math.round(scene.height * 0.74);
   const x = Math.round(scene.width * 0.56);
-  blit(ctx, bone, x - 34, ground - 6, 4);
+  blit(ctx, bone, x - 34, ground - 6, 3);
   if (!ally) return;
   shadow(ctx, x + 18, ground, 14);
-  blit(ctx, ally, x + 18, ground, 3);
+  blit(ctx, ally, x + 18, ground, 2);
 }
 
 function drawCurtain(ctx: CanvasRenderingContext2D, scene: Scene): void {
@@ -422,7 +453,7 @@ function drawCurtain(ctx: CanvasRenderingContext2D, scene: Scene): void {
       blit(ctx, sprite, x - 28 + ally.index * 18, y + 8, 1);
     }
   }
-  blit(ctx, title ? hero : heroWin, x, y + bob, 2);
+  blit(ctx, title ? hero : heroWin, x, y + bob, 1);
   ctx.font = '24px PixelMplus12, monospace';
   ctx.textAlign = 'center';
   ctx.textBaseline = 'top';
@@ -433,7 +464,7 @@ function drawCurtain(ctx: CanvasRenderingContext2D, scene: Scene): void {
 }
 
 function drawBang(ctx: CanvasRenderingContext2D, scene: Scene, bob: number): void {
-  const sprite = enemySprite(scene.encounter);
+  const sprite = enemyFrames[scene.encounter].idle;
   const hop = Math.sin(scene.time * 8) * 2;
   blit(ctx, bang, scene.enemyX, scene.enemyY + bob - sprite.h + hop, 2);
 }
@@ -447,7 +478,7 @@ function drawHero(ctx: CanvasRenderingContext2D, scene: Scene): void {
     ctx.fillStyle = `rgba(226,236,255,${0.22 * scene.heroGlow})`;
     ctx.fillRect(x - radius, y - radius - 10, radius * 2, radius * 2);
   }
-  const drawn = scene.heroPose === 'down' ? 2 : scene.heroScale;
+  const drawn = scene.heroScale;
   const hop = scene.celebrating ? Math.round(Math.abs(Math.sin(scene.time * 6)) * 6) : 0;
   blit(ctx, sprite, x, y - hop, drawn);
   if (scene.heroFlash > 0) {
@@ -544,22 +575,36 @@ function paintMosaic(ctx: CanvasRenderingContext2D, width: number, height: numbe
   }
 }
 
-function enemySprite(encounter: EncounterId): Sprite {
-  return enemySprites[encounter];
-}
-
 const ENEMY_SHADOW: Record<EncounterId, number> = {
-  tutorial: 14,
-  minion: 22,
-  minion2: 20,
-  minion3: 24,
-  boss: 40,
+  tutorial: 22,
+  minion: 14,
+  minion2: 28,
+  minion3: 16,
+  boss: 32,
 };
+
+function allyPoseSprite(frames: DogFrames, pose: Pose, time: number, index: number): Sprite {
+  switch (pose) {
+    case 'down':
+      return frames.down;
+    case 'lunge':
+      return frames.attack;
+    case 'guard':
+      return frames.guard;
+    case 'idle':
+      return Math.floor(time * 1.5 + index) % 2 === 1 ? frames.idle2 : frames.idle;
+    default: {
+      const neverPose: never = pose;
+      throw new Error(`unknown ally pose ${String(neverPose)}`);
+    }
+  }
+}
 
 function drawAllies(ctx: CanvasRenderingContext2D, scene: Scene): void {
   const ordered = [...scene.allies].sort((a, b) => a.y - b.y);
   for (const ally of ordered) {
-    const sprite = allySprites[ally.index] ?? allySprites[0];
+    const frames = allyFrames[ally.index] ?? allyFrames[0];
+    const sprite = frames ? allyPoseSprite(frames, ally.pose, scene.time, ally.index) : allySprites[0];
     if (!sprite) continue;
     const lane = ally.index - (scene.allies.length - 1) / 2;
     const goalX = scene.enemyX + 22 + lane * 16;
