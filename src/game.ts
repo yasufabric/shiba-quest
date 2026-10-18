@@ -641,6 +641,7 @@ function toScene(state: State): Scene {
     })),
     summon: state.summon,
     curtain: state.phase === 'title' ? 'title' : state.phase === 'ending' ? 'ending' : null,
+    recruitAlly: state.phase === 'recruit' ? state.save.allies : null,
     bang: state.bang && state.enemyVisible,
     numbers: state.numbers,
     fragments: state.shards,
