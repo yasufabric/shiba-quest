@@ -10,7 +10,7 @@
 - The prototype fights one minion, then one boss, then offers one ally. `config.campaign` reserves 3 minions, 4 allies, and a disabled quad-charge combo. Do not build those yet.
 - Art is original pixel data in `src/sprites.ts`. Do not add third-party art, ripped sprites, or paid APIs.
 - Japanese UI uses bundled PixelMplus12 (`src/fonts/`, M+ FONT LICENSE in `src/fonts/LICENSE.txt`). Do not load a font from a CDN.
-- The battle draws on a 192×240 framebuffer and scales onto the phone with integer nearest-neighbor (2× on a 390px-wide portrait). Sprite sizes and juice magnitudes assume that field.
+- The battle draws on a 195×240 framebuffer and scales onto the phone with integer nearest-neighbor (2× fills a 390px-wide portrait). Sprite sizes and juice magnitudes assume that field.
 - Audio is Web Audio synthesis. Unlock it on `touchend`.
 - Base path is `/shiba-quest/`. `npm run typecheck`, `npm test`, and `npm run build` must pass.
 - Pages deploys from GitHub Actions on `main`.

@@ -19,10 +19,10 @@ import {
 export type Pose = 'idle' | 'lunge' | 'guard' | 'down';
 
 /**
- * Battle framebuffer. 192×240 integer-scales by 2 above the windows on a
- * 390×844 phone, so enemies stay large and pixels stay chunky.
+ * Battle framebuffer. 195×240 integer-scales by 2 to 390×480 on a 390×844
+ * phone, so the picture meets both sides of the screen and pixels stay square.
  */
-export const VIEW_W = 192;
+export const VIEW_W = 195;
 export const VIEW_H = 240;
 
 export interface FloatNumber {

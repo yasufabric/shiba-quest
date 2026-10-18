@@ -6,7 +6,7 @@ export interface Sprite {
   rows: readonly string[];
 }
 
-/** Original sprites for the 192-wide battle field. */
+/** Original sprites for the battle field. */
 export const palette: Record<string, string> = {
   k: '#3a2218',
   d: '#7a3418',
