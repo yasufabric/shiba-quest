@@ -1,4 +1,5 @@
 import type { EncounterId } from './config';
+import { blackShiba, pupShiba, redShiba, sesameShiba, whiteShiba } from './shiba';
 import type { Sprite } from './sprites';
 
 /** One painted dog, in the poses a battle asks for. */
@@ -55,39 +56,6 @@ interface Breed {
   /** 1 faces the party, -1 faces the foe. */
   faceDir: 1 | -1;
 }
-
-const SHIBA: Coat = {
-  line: 'k',
-  dark: 'd',
-  mid: 'o',
-  lit: 'l',
-  hot: 'y',
-  belly: 'w',
-  nose: 'p',
-  ear: 'd',
-};
-
-const BLACK: Coat = {
-  line: 'B',
-  dark: 'X',
-  mid: 'F',
-  lit: 'N',
-  hot: 'H',
-  belly: 'Q',
-  nose: 'p',
-  ear: 'X',
-};
-
-const WHITE: Coat = {
-  line: 'F',
-  dark: 'C',
-  mid: 'A',
-  lit: 'e',
-  hot: 's',
-  belly: 's',
-  nose: 'p',
-  ear: 'H',
-};
 
 const CORGI: Coat = {
   line: 'k',
@@ -415,27 +383,7 @@ function breed(partial: Breed): Breed {
   return partial;
 }
 
-const heroBreed = breed({
-  w: 64,
-  h: 72,
-  coat: SHIBA,
-  body: [16, 12],
-  head: [12, 11],
-  snout: 7,
-  leg: 16,
-  ear: 'prick',
-  earSize: 12,
-  tail: 'curl',
-  face: 'fox',
-  ruff: 0,
-  mask: false,
-  wrinkles: false,
-  saddle: false,
-  menacing: false,
-  faceDir: -1,
-});
-
-export const heroFrames: DogFrames = frames(heroBreed);
+export const heroFrames: DogFrames = redShiba;
 
 export const hero: Sprite = heroFrames.idle;
 export const heroIdle: Sprite = heroFrames.idle2;
@@ -446,43 +394,20 @@ export const heroDown: Sprite = heroFrames.down;
 export const heroWin: Sprite = heroFrames.win;
 export const heroCharge: Sprite = heroFrames.charge;
 
-const allyBase = {
-  coat: SHIBA,
-  body: [12, 9] as const,
-  head: [9, 8] as const,
-  snout: 5,
-  leg: 12,
-  ear: 'prick' as const,
-  earSize: 9,
-  tail: 'curl' as const,
-  face: 'fox' as const,
-  ruff: 0,
-  mask: false,
-  wrinkles: false,
-  saddle: false,
-  menacing: false,
-  faceDir: -1 as const,
-};
-
-export const allyFrames: readonly DogFrames[] = [
-  frames(breed({ ...allyBase, w: 48, h: 56, coat: BLACK })),
-  frames(breed({ ...allyBase, w: 48, h: 56, coat: WHITE })),
-  frames(breed({ ...allyBase, w: 48, h: 56, saddle: true })),
-  frames(breed({ ...allyBase, w: 40, h: 46, body: [9, 7], head: [8, 7], snout: 4, leg: 9, earSize: 7 })),
-];
+export const allyFrames: readonly DogFrames[] = [blackShiba, whiteShiba, sesameShiba, pupShiba];
 
 export const allySprites: readonly Sprite[] = allyFrames.map((dog) => dog.idle);
 
 const corgi = breed({
-  w: 78,
-  h: 56,
+  w: 52,
+  h: 36,
   coat: CORGI,
-  body: [24, 11],
-  head: [11, 10],
-  snout: 8,
-  leg: 8,
+  body: [16, 7],
+  head: [8, 7],
+  snout: 5,
+  leg: 6,
   ear: 'prick',
-  earSize: 11,
+  earSize: 7,
   tail: 'stub',
   face: 'fox',
   ruff: 0,
@@ -494,15 +419,15 @@ const corgi = breed({
 });
 
 const chihuahua = breed({
-  w: 52,
-  h: 64,
+  w: 40,
+  h: 48,
   coat: FAWN,
-  body: [11, 9],
-  head: [10, 9],
-  snout: 4,
-  leg: 12,
+  body: [8, 7],
+  head: [8, 7],
+  snout: 3,
+  leg: 8,
   ear: 'bat',
-  earSize: 16,
+  earSize: 13,
   tail: 'saber',
   face: 'fox',
   ruff: 0,
@@ -514,15 +439,15 @@ const chihuahua = breed({
 });
 
 const dachshund = breed({
-  w: 104,
-  h: 48,
+  w: 64,
+  h: 30,
   coat: CHOCOLATE,
-  body: [34, 9],
-  head: [10, 8],
-  snout: 12,
-  leg: 7,
+  body: [20, 6],
+  head: [7, 6],
+  snout: 8,
+  leg: 4,
   ear: 'drop',
-  earSize: 10,
+  earSize: 6,
   tail: 'saber',
   face: 'long',
   ruff: 0,
@@ -534,13 +459,13 @@ const dachshund = breed({
 });
 
 const pug = breed({
-  w: 60,
-  h: 56,
+  w: 44,
+  h: 40,
   coat: FAWN,
-  body: [15, 12],
-  head: [13, 12],
-  snout: 3,
-  leg: 9,
+  body: [11, 9],
+  head: [10, 9],
+  snout: 2,
+  leg: 6,
   ear: 'button',
   earSize: 4,
   tail: 'curl',

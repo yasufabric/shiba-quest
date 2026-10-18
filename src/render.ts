@@ -166,8 +166,8 @@ export function drawScene(ctx: CanvasRenderingContext2D, scene: Scene): void {
     return;
   }
   if (scene.enemyVisible) shadow(ctx, scene.enemyX, scene.enemyY, ENEMY_SHADOW[scene.encounter]);
-  shadow(ctx, scene.heroX, scene.heroY, 11);
-  for (const ally of scene.allies) shadow(ctx, ally.x, ally.y, 7);
+  shadow(ctx, scene.heroX, scene.heroY, 8);
+  for (const ally of scene.allies) shadow(ctx, ally.x, ally.y, 6);
 
   if (scene.enemyVisible) {
     const bob = scene.enemyPose === 'down' ? 0 : Math.sin(scene.time * 2.2) * 1;
@@ -453,7 +453,7 @@ function drawCurtain(ctx: CanvasRenderingContext2D, scene: Scene): void {
       blit(ctx, sprite, x - 28 + ally.index * 18, y + 8, 1);
     }
   }
-  blit(ctx, title ? hero : heroWin, x, y + bob, 1);
+  blit(ctx, title ? hero : heroWin, x, y + bob, 2);
   ctx.font = '24px PixelMplus12, monospace';
   ctx.textAlign = 'center';
   ctx.textBaseline = 'top';
@@ -576,10 +576,10 @@ function paintMosaic(ctx: CanvasRenderingContext2D, width: number, height: numbe
 }
 
 const ENEMY_SHADOW: Record<EncounterId, number> = {
-  tutorial: 22,
-  minion: 14,
-  minion2: 28,
-  minion3: 16,
+  tutorial: 16,
+  minion: 12,
+  minion2: 18,
+  minion3: 14,
   boss: 32,
 };
 
