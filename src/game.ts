@@ -662,9 +662,9 @@ function syncHud(state: State, ui: Ui): void {
   syncRoster(ui, shownAllies);
   ui.bones.textContent = String(state.save.bones);
   const record = state.save.bestDamage > 0 ? String(state.save.bestDamage) : '';
-  ui.record.hidden = record === '';
-  ui.record.textContent = record;
   const showResult = record !== '' && state.phase === 'defeat';
+  ui.record.hidden = record === '' || showResult;
+  ui.record.textContent = record;
   ui.resultRecord.hidden = !showResult;
   ui.resultRecord.textContent = record;
   mark(state, ui);
