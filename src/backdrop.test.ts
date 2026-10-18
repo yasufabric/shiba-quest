@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { FIELD_HORIZON, roadHalf } from './render';
+import { FIELD_HORIZON, VIEW_H, VIEW_W, roadHalf } from './render';
 
 describe('shrine road', () => {
   it('is one band that widens from the gate to the party', () => {
@@ -11,5 +11,10 @@ describe('shrine road', () => {
     expect(near).not.toBeNull();
     expect(near ?? 0).toBeGreaterThan((far ?? 0) * 3);
     expect(roadHalf(horizon - 4, height)).toBeNull();
+  });
+
+  it('fills a 390-wide phone at an integer 2× scale', () => {
+    expect(VIEW_W * 2).toBe(390);
+    expect(VIEW_H * 2).toBe(480);
   });
 });
