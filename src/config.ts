@@ -1,7 +1,7 @@
 /**
  * Every tuning number for しばクエスト lives here.
  *
- * Active Time Battle, solo hero (allies, when fielded, have their own gauges):
+ * Active Time Battle. The hero and three shibas all fight from the first battle.
  *   Gauges fill in real time. The command window opens when a member is full.
  *   The enemy acts on its own gauge, including while the window is open.
  *   "!" shows once a strike gauge passes the telegraph mark. まもる zeros that hit.
@@ -19,13 +19,13 @@ export const config = {
   atb: {
     /** Seconds for a gauge to fill from empty. */
     heroFill: 2,
-    allyFill: 2.8,
+    allyFill: 7,
     telegraphAt: 0.08,
     promptDelay: 0.4,
     hesitantMin: 1.45,
     hesitantMax: 2.6,
     /** Chance a hesitant player charges through a telegraph they meant to guard. */
-    hesitantMiss: 0.28,
+    hesitantMiss: 0.58,
     anim: {
       charge: 0.34,
       attack: 0.45,
@@ -48,8 +48,10 @@ export const config = {
   },
   ally: {
     maxHp: 48,
-    attack: 10,
+    attack: 6,
     maxCount: 4,
+    /** しば plus these three. ちび stays in the art and is not fielded. */
+    fieldCount: 3,
     /** Field order matches the ally sprites: くろ, しろ, ごま, ちび. */
     names: ['くろ', 'しろ', 'ごま', 'ちび'] as const,
   },
@@ -73,25 +75,25 @@ export const config = {
     },
     minion: {
       name: 'ちわわ',
-      hp: 760,
+      hp: 958,
       attack: 16,
       pattern: ['windup', 'windup', 'strike'] as const,
     },
     minion2: {
       name: 'だくす',
-      hp: 675,
+      hp: 851,
       attack: 12,
       pattern: ['windup', 'strike'] as const,
     },
     minion3: {
       name: 'ぱぐ',
-      hp: 980,
+      hp: 1040,
       attack: 14,
       pattern: ['windup', 'windup', 'windup', 'strike'] as const,
     },
     boss: {
       name: 'あきた',
-      hp: 837,
+      hp: 1055,
       attack: 20,
       pattern: ['windup', 'strike', 'windup', 'windup', 'strike'] as const,
     },

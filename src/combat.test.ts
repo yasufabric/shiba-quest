@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { config } from './config';
-import { acceptRecruit, continueAfterBoss, defaultSave, keepRecruiting, noteDamage, pickMinion, recruitAlly, resolveWin } from './campaign';
+import { continueAfterBoss, defaultSave, noteDamage, pickMinion, resolveWin } from './campaign';
 import { quadChargeReady } from './combat';
 import {
   act,
@@ -141,7 +141,7 @@ describe('session', () => {
     expect(tutorialSeconds()).toBeGreaterThan(8);
     expect(tutorialSeconds()).toBeLessThan(14);
     for (const id of config.campaign.minions) {
-      const report = simulateSession(promptProfile(), id, 0, rules);
+      const report = simulateSession(promptProfile(), id, config.ally.fieldCount, rules);
       expect(report.outcome).toBe('win');
       expect(report.time).toBeGreaterThanOrEqual(140);
       expect(report.time).toBeLessThanOrEqual(config.time.sessionMaxSeconds);
@@ -157,7 +157,7 @@ describe('session', () => {
     for (const id of config.campaign.minions) {
       let wins = 0;
       for (let seed = 1; seed <= seeds; seed += 1) {
-        const report = simulateSession(hesitantProfile(seed), id, 0, rules);
+        const report = simulateSession(hesitantProfile(seed), id, config.ally.fieldCount, rules);
         if (report.outcome === 'win') wins += 1;
       }
       expect(wins / seeds).toBeGreaterThanOrEqual(0.25);
@@ -192,8 +192,11 @@ describe('variety', () => {
 });
 
 describe('campaign', () => {
-  it('plays one random minion then the boss, and fills the party across runs', () => {
+  it('fields four shibas without spending bones, and banks a bone on each win', () => {
     expect(config.campaign.minions).toEqual(['minion', 'minion2', 'minion3']);
+    expect(config.ally.fieldCount).toBe(3);
+    expect(makeEncounter('minion', config.ally.fieldCount).party).toHaveLength(4);
+    expect(makeEncounter('tutorial', config.ally.fieldCount).party.slice(1).every((member) => member.speed === 0)).toBe(true);
     expect(pickMinion(0)).toBe('minion');
     expect(pickMinion(0.2)).toBe('minion');
     expect(pickMinion(0.5)).toBe('minion2');
@@ -202,34 +205,13 @@ describe('campaign', () => {
     let save = resolveWin(defaultSave(), 'minion2');
     expect(save).toMatchObject({ bones: 1, allies: 0, encounter: 'boss', recruitPending: false });
     save = resolveWin(save, 'boss', 0.99);
-    expect(save).toMatchObject({ bones: 2, allies: 0, encounter: 'minion3', recruitPending: true });
-    expect(continueAfterBoss(save)).toBe('recruit');
+    expect(save).toMatchObject({ bones: 2, allies: 0, encounter: 'minion3', recruitPending: false });
+    expect(continueAfterBoss()).toBe('fight');
+    expect(save.bones).toBe(2);
 
-    save = acceptRecruit(save) ?? save;
-    expect(save).toMatchObject({ allies: 1, bones: 1, recruitPending: false, encounter: 'minion3' });
-    expect(keepRecruiting(save)).toBe(true);
-    expect(continueAfterBoss(save)).toBe('fight');
-
-    save = resolveWin(save, 'minion3');
-    save = resolveWin(save, 'boss', 0);
-    expect(save.bones).toBe(3);
-    save = acceptRecruit(save) ?? save;
-    expect(save).toMatchObject({ allies: 2, bones: 2, recruitPending: false });
-
-    save = resolveWin(save, 'minion');
-    save = resolveWin(save, 'boss', 0);
-    save = acceptRecruit(save) ?? save;
-    save = resolveWin(save, 'minion2');
-    save = resolveWin(save, 'boss', 0.5);
-    save = acceptRecruit(save) ?? save;
-    expect(save).toMatchObject({ allies: 4, bones: 4, recruitPending: false });
-    expect(recruitAlly(save)).toBeNull();
-    expect(acceptRecruit(save)).toBeNull();
-    const capped = resolveWin(save, 'boss', 0.5);
-    expect(capped.recruitPending).toBe(false);
-    expect(continueAfterBoss(capped)).toBe('fight');
-    expect(capped.allies).toBe(4);
-    expect(capped.encounter).toBe('minion2');
+    const stuck = { ...save, recruitPending: true, bones: 2 };
+    expect(resolveWin(stuck, 'minion').recruitPending).toBe(false);
+    expect(continueAfterBoss()).toBe('fight');
   });
 });
 

@@ -25,24 +25,6 @@ export function grantBone(save: SaveData): SaveData {
   return { ...save, bones: save.bones + 1 };
 }
 
-/** Spend one bone to field the next shiba, up to four. */
-export function recruitAlly(save: SaveData): SaveData | null {
-  if (save.bones < 1) return null;
-  if (save.allies >= config.ally.maxCount) return null;
-  return { ...save, bones: save.bones - 1, allies: save.allies + 1 };
-}
-
-/** One clear fields one ally and leaves the card. A spare bone stays banked. */
-export function acceptRecruit(save: SaveData): SaveData | null {
-  const next = recruitAlly(save);
-  if (!next) return null;
-  return { ...next, recruitPending: false };
-}
-
-export function keepRecruiting(save: SaveData): boolean {
-  return save.bones >= 1 && save.allies < config.ally.maxCount;
-}
-
 /** `roll` is in [0, 1). Each slice of the pool is one minion. */
 export function pickMinion(roll: number): MinionId {
   const pool = config.campaign.minions;
@@ -57,8 +39,8 @@ export function isCampaignId(value: unknown): value is CampaignId {
 
 /**
  * A win banks one bone. A minion leads to the boss. The boss leads to a new
- * random minion and opens one recruit. The tutorial never calls this.
- * A spare bone stays for a later run, so four allies take more than one run.
+ * random minion. The party is already fielded, so a bone never opens a recruit card.
+ * The tutorial never calls this.
  */
 export function resolveWin(save: SaveData, defeated: CampaignId, roll = 0): SaveData {
   const paid = grantBone(save);
@@ -66,13 +48,12 @@ export function resolveWin(save: SaveData, defeated: CampaignId, roll = 0): Save
   return {
     ...paid,
     encounter: bossDown ? pickMinion(roll) : config.campaign.boss,
-    recruitPending: bossDown && paid.allies < config.ally.maxCount,
+    recruitPending: false,
   };
 }
 
-/** The boss card dismisses into recruit while a slot and a bone are waiting. */
-export function continueAfterBoss(save: SaveData): 'recruit' | 'fight' {
-  if (save.recruitPending && keepRecruiting(save)) return 'recruit';
+/** The boss card dismisses into the next fight. Bones stay in the bank. */
+export function continueAfterBoss(): 'fight' {
   return 'fight';
 }
 
